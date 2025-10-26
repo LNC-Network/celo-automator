@@ -8,8 +8,9 @@ import path from 'path';
 import fs from 'fs';
 import { WebSocketServer } from 'ws';
 import http from 'http';
-import { createPublicClient, createWalletClient, http as viem_http, parseEther } from 'viem';
-import { celo } from 'viem/chains';
+import { createPublicClient, createWalletClient, http as viem_http, parseEther, getAddress } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { celo, celoAlfajores } from 'viem/chains';
 import { TransactionTracker } from './transaction-tracker.js';
 import { GasEstimationService } from './gas-estimation-service.js';
 import { EtherscanService } from './etherscan-service.js';
@@ -50,7 +51,9 @@ export class AutomationSystem {
       alchemyPolicyId: config.alchemyPolicyId || process.env.ALCHEMY_POLICY_ID,
       etherscanApiKey: config.etherscanApiKey || process.env.ETHERSCAN_API_KEY || 'demo',
       enableBlockchainIntegration: process.env.ENABLE_BLOCKCHAIN_INTEGRATION !== 'false',
-      enableRealBlockchainCalls: process.env.ENABLE_REAL_BLOCKCHAIN_CALLS !== 'false',
+      // Real blockchain calls are now controlled per-transaction via privateKey parameter
+      // Default to disabled; users provide privateKey when needed for real transactions
+      enableRealBlockchainCalls: false,
       maxRiskScore: parseInt(process.env.MAX_RISK_SCORE) || 50,
       requireApproval: process.env.REQUIRE_APPROVAL === 'true',
       enableSimulation: process.env.ENABLE_SIMULATION === 'true',
@@ -121,21 +124,31 @@ export class AutomationSystem {
 
   initializeBlockchainClients() {
     try {
-      // Celo network configuration
+      // Celo network configuration - using Alfajores testnet (chain ID 44787)
       const rpcUrl = this.config.rpcUrl || 'https://alfajores-forno.celo-testnet.org';
 
-      // Create Viem clients
+      // Create Viem clients for Alfajores testnet
       this.publicClient = createPublicClient({
-        chain: celo,
+        chain: celoAlfajores,
         transport: viem_http(rpcUrl)
       });
 
       this.walletClient = createWalletClient({
-        chain: celo,
+        chain: celoAlfajores,
         transport: viem_http(rpcUrl)
       });
 
-      console.log('✅ Blockchain clients initialized for Celo network');
+      console.log('✅ Blockchain clients initialized for Celo Alfajores testnet (chain ID 44787)');
+      
+      // Log real blockchain call status
+      if (this.config.privateKey) {
+        console.log('🔑 Private key configured - Real blockchain calls ENABLED');
+        console.log('✅ Transactions will execute on the blockchain by default');
+      } else {
+        console.log('ℹ️  Real blockchain calls are DISABLED by default');
+        console.log('💡 To execute real transactions, include "privateKey" in the request body');
+        console.log('⚠️  SECURITY: Only send private keys over HTTPS in production environments');
+      }
     } catch (error) {
       console.error('❌ Failed to initialize blockchain clients:', error);
     }
@@ -414,9 +427,9 @@ export class AutomationSystem {
   initializeExpress() {
     this.app = express();
     this.setupMiddleware();
+    this.setupWalletEndpoints();  // Set up wallet endpoints first
     this.setupRoutes();
     this.setupAutomationEndpoints();
-    this.setupWalletEndpoints();
   }
 
   setupMiddleware() {
@@ -1200,7 +1213,7 @@ Response:
     // Blockchain Integration Endpoints
     this.app.post('/api/blockchain/send-transaction', async (req, res) => {
       try {
-        const { to, value, data, from } = req.body;
+        const { to, value, data, from, privateKey } = req.body;
 
         if (!to) {
           return res.status(400).json({
@@ -1210,22 +1223,60 @@ Response:
           });
         }
 
-        const fromAddress = from || DEFAULT_ADDRESS;
+        // Validate and checksum addresses
+        let toAddress, fromAddress;
+        try {
+          toAddress = getAddress(to);
+          fromAddress = from ? getAddress(from) : getAddress(DEFAULT_ADDRESS);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid address format: ${error.message}`,
+            code: 'INVALID_ADDRESS'
+          });
+        }
 
-        // Attempt real blockchain transaction if enabled
+        // Attempt real blockchain transaction if private key is provided
         let txHash;
         let realTransaction = false;
+        let transactionType = 'simulated'; // 'simulated' or 'real'
 
-        if (this.config.enableRealBlockchainCalls && this.walletClient) {
+        // Use privateKey from request body or fall back to environment config
+        const effectivePrivateKey = privateKey || this.config.privateKey;
+
+        // Only attempt real transaction if privateKey is provided
+        if (effectivePrivateKey && this.walletClient) {
           try {
-            // Execute real transaction on blockchain
-            txHash = await this.walletClient.sendTransaction({
-              to,
-              value: BigInt(value || '0'),
-              data: data || '0x',
-              account: fromAddress
+            console.log('🔐 Private key provided - attempting real transaction...');
+            
+            // Create a wallet client with the provided private key
+            const walletClientWithKey = createWalletClient({
+              chain: celoAlfajores,
+              transport: viem_http(this.config.rpcUrl),
+              account: privateKeyToAccount(effectivePrivateKey)
             });
+
+            // Safely convert value to BigInt - handle decimal values
+            let valueBigInt = BigInt(0);
+            if (value && value !== '0') {
+              try {
+                const numValue = parseInt(value, 10);
+                valueBigInt = BigInt(numValue);
+              } catch (err) {
+                valueBigInt = BigInt(0);
+              }
+            }
+
+            // Execute real transaction on blockchain
+            txHash = await walletClientWithKey.sendTransaction({
+              to: toAddress,
+              value: valueBigInt,
+              data: data || '0x',
+              account: privateKeyToAccount(effectivePrivateKey)
+            });
+            
             realTransaction = true;
+            transactionType = 'real';
             console.log(`🔗 Real transaction sent: ${txHash}`);
           } catch (error) {
             console.warn(`⚠️ Real transaction failed, using simulated: ${error.message}`);
@@ -1233,25 +1284,29 @@ Response:
             txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
           }
         } else {
-          // Generate simulated transaction hash
+          // Generate simulated transaction hash (no private key provided)
+          if (!effectivePrivateKey) {
+            console.log('ℹ️  No private key provided - using simulated transaction');
+          }
           txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
         }
 
         // Register transaction with tracker
         const transaction = this.transactionTracker.registerTransaction(txHash, {
           from: fromAddress,
-          to,
+          to: toAddress,
           value: value || '0',
           data: data || '',
           type: 'send',
-          realTransaction
+          realTransaction,
+          transactionType
         });
 
         // Store in transaction history
         this.storeTransactionHistory({
           txHash,
           fromAddress,
-          to,
+          to: toAddress,
           value: value || '0',
           status: 'pending',
           type: 'send',
@@ -1263,8 +1318,10 @@ Response:
           data: {
             txHash,
             status: transaction.status,
-            message: 'Transaction submitted and tracking started',
-            realTransaction
+            message: realTransaction ? 'Real transaction submitted on blockchain' : 'Simulated transaction (no private key provided)',
+            realTransaction,
+            transactionType: transactionType,
+            note: !privateKey ? 'Provide a "privateKey" parameter in the request body to execute real transactions' : undefined
           }
         });
       } catch (error) {
@@ -1280,6 +1337,9 @@ Response:
       try {
         const { functionName, parameters, context } = req.body;
 
+        // Log incoming request for debugging
+        console.log(`📞 Incoming function-call request:`, { functionName, hasParams: !!parameters });
+
         // Validate function name
         if (!functionName) {
           return res.status(400).json({
@@ -1287,8 +1347,8 @@ Response:
             error: 'Function name is required',
             code: 'MISSING_FUNCTION',
             example: {
-              functionName: 'getCELOBalance',
-              parameters: { address: '0x...' }
+              functionName: 'getProposals',
+              parameters: {}
             }
           });
         }
@@ -1302,6 +1362,7 @@ Response:
         const isValidFunction = validFunctions.includes(functionName) || customFunctions.includes(functionName);
 
         if (!isValidFunction) {
+          console.warn(`❌ Unknown function: ${functionName}`);
           return res.status(400).json({
             success: false,
             error: `Unknown function: ${functionName}`,
@@ -1318,7 +1379,7 @@ Response:
         this.validateFunctionParameters(functionName, params);
 
         // Log the function call for debugging
-        console.log(`📞 Function call: ${functionName}`, JSON.stringify(params).substring(0, 100));
+        console.log(`✅ Executing function: ${functionName}`, JSON.stringify(params).substring(0, 100));
 
         let result;
         const txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
@@ -1497,7 +1558,19 @@ Response:
           });
         }
 
-        const gasData = await this.gasEstimationService.getComprehensiveGasData(to, value || '0', data || '0x');
+        // Validate and checksum address
+        let toAddress;
+        try {
+          toAddress = getAddress(to);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid address format: ${error.message}`,
+            code: 'INVALID_ADDRESS'
+          });
+        }
+
+        const gasData = await this.gasEstimationService.getComprehensiveGasData(toAddress, value || '0', data || '0x');
 
         res.json({
           success: true,
@@ -2143,6 +2216,8 @@ Response:
   // ============================================================================
 
   setupWalletEndpoints() {
+    console.log('📝 Setting up wallet management endpoints...');
+    
     // Get wallet info
     this.app.get('/api/wallet/:address', async (req, res) => {
       try {
@@ -2156,7 +2231,19 @@ Response:
           });
         }
 
-        const walletInfo = await this.getWalletInfo(address);
+        // Validate and checksum address
+        let checksummedAddress;
+        try {
+          checksummedAddress = getAddress(address);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid address format: ${error.message}`,
+            code: 'INVALID_ADDRESS'
+          });
+        }
+
+        const walletInfo = await this.getWalletInfo(checksummedAddress);
 
         res.json({
           success: true,
@@ -2184,10 +2271,22 @@ Response:
           });
         }
 
+        // Validate and checksum address
+        let checksummedAddress;
+        try {
+          checksummedAddress = getAddress(address);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid address format: ${error.message}`,
+            code: 'INVALID_ADDRESS'
+          });
+        }
+
         res.json({
           success: true,
           data: {
-            address,
+            address: checksummedAddress,
             balance: null,
             tokens: []
           }
@@ -2214,10 +2313,22 @@ Response:
           });
         }
 
+        // Validate and checksum address
+        let checksummedAddress;
+        try {
+          checksummedAddress = getAddress(address);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid address format: ${error.message}`,
+            code: 'INVALID_ADDRESS'
+          });
+        }
+
         res.json({
           success: true,
           data: {
-            address,
+            address: checksummedAddress,
             tokens: [],
             count: 0
           }
@@ -2230,6 +2341,8 @@ Response:
         });
       }
     });
+    
+    console.log('✅ Wallet endpoints registered');
   }
 
   start() {

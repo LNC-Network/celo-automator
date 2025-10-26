@@ -1,8 +1,3 @@
-/**
- * Blockchain Integration Service
- * Connects Frontend with Backend blockchain functionality
- */
-
 import { apiClient } from './api-client'
 
 export interface BlockchainConfig {
