@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import Database from 'better-sqlite3';
 import express from 'express';
 import cors from 'cors';
@@ -7,12 +8,11 @@ import path from 'path';
 import fs from 'fs';
 import { WebSocketServer } from 'ws';
 import http from 'http';
-import { createPublicClient, createWalletClient, http as viem_http, parseEther, privateKeyToAccount } from 'viem';
+import { createPublicClient, createWalletClient, http as viem_http, parseEther } from 'viem';
 import { celo } from 'viem/chains';
 import { TransactionTracker } from './transaction-tracker.js';
 import { GasEstimationService } from './gas-estimation-service.js';
 import { EtherscanService } from './etherscan-service.js';
-import { LangChainAgent } from './langchain-agent.js';
 
 const DEFAULT_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEbb';
 const CELO_TOKENS = {
@@ -28,12 +28,10 @@ export class AutomationSystem {
     this.functionRegistry = this.createFunctionRegistry();
     this.wsClients = new Set(); // Track WebSocket clients
     this.transactionQueue = []; // Track pending transactions
-    this.account = null; // Wallet account
 
+    this.initializeAI();
     this.initializeDatabase();
-    this.initializeWalletAccount();
     this.initializeBlockchainClients();
-    this.initializeLangChainAgent();
     this.initializeTransactionTracker();
     this.initializeGasEstimationService();
     this.initializeEtherscanService();
@@ -61,34 +59,17 @@ export class AutomationSystem {
     };
   }
 
-  initializeWalletAccount() {
-    try {
-      if (this.config.privateKey && this.config.privateKey !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
-        this.account = privateKeyToAccount(this.config.privateKey);
-        console.log('✅ Wallet account initialized:', this.account.address);
-      } else {
-        console.warn('⚠️ No valid private key - transactions will be simulated');
+  initializeAI() {
+    this.gemini = new GoogleGenerativeAI(this.config.geminiApiKey);
+    this.model = this.gemini.getGenerativeModel({ 
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        temperature: 0.1,
+        topP: 0.8,
+        topK: 40,
+        maxOutputTokens: 2048,
       }
-    } catch (error) {
-      console.error('❌ Failed to initialize wallet account:', error.message);
-    }
-  }
-
-  initializeLangChainAgent() {
-    try {
-      this.langChainAgent = new LangChainAgent({
-        geminiApiKey: this.config.geminiApiKey,
-        privateKey: this.config.privateKey,
-        network: this.config.network,
-        rpcUrl: this.config.rpcUrl,
-        debug: this.config.debug
-      });
-      console.log('✅ LangChain agent initialized');
-    } catch (error) {
-      console.error('❌ Failed to initialize LangChain agent:', error.message);
-      console.warn('⚠️ Falling back to legacy AI system');
-      this.langChainAgent = null;
-    }
+    });
   }
 
   initializeDatabase() {
@@ -143,27 +124,16 @@ export class AutomationSystem {
       // Celo network configuration
       const rpcUrl = this.config.rpcUrl || 'https://alfajores-forno.celo-testnet.org';
 
-      // Create Viem public client for reading
+      // Create Viem clients
       this.publicClient = createPublicClient({
         chain: celo,
         transport: viem_http(rpcUrl)
       });
 
-      // Create wallet client if account is available
-      if (this.account) {
-        this.walletClient = createWalletClient({
-          chain: celo,
-          transport: viem_http(rpcUrl),
-          account: this.account
-        });
-        console.log('✅ Wallet client initialized with account');
-      } else {
-        this.walletClient = createWalletClient({
-          chain: celo,
-          transport: viem_http(rpcUrl)
-        });
-        console.warn('⚠️ Wallet client created without account - transactions will fail');
-      }
+      this.walletClient = createWalletClient({
+        chain: celo,
+        transport: viem_http(rpcUrl)
+      });
 
       console.log('✅ Blockchain clients initialized for Celo network');
     } catch (error) {
@@ -572,44 +542,61 @@ export class AutomationSystem {
 
   async processNaturalLanguage(input, context = {}) {
     try {
-      // Use LangChain agent if available
-      if (this.langChainAgent) {
-        const result = await this.langChainAgent.process(input);
-        
-        return {
-          success: result.success,
-          output: result.output,
-          steps: result.steps || [],
-          agent: 'langchain'
-        };
-      }
-      
-      // Fallback to legacy system
       const sessionId = context.sessionId || 'default';
       const history = this.conversationHistory.get(sessionId) || [];
       
-      // Mock response for fallback
-      const parsedResult = {
-        reasoning: "Using legacy AI system (LangChain unavailable)",
-        confidence: 0.5,
-        functionCalls: [
+      const systemPrompt = this.buildSystemPrompt();
+      const conversationContext = this.buildConversationContext(history, context);
+      
+      let result;
+      try {
+        const response = await this.model.generateContent([
           {
-            function: "getCELOBalance",
-            parameters: { address: DEFAULT_ADDRESS },
-            priority: 1
+            text: `${systemPrompt}\n\nUser Input: ${input}\n\nContext: ${JSON.stringify(conversationContext)}`
           }
-        ]
-      };
+        ]);
+        
+        result = response.response.text();
+      } catch (geminiError) {
+        result = JSON.stringify({
+          reasoning: "Mock reasoning for testing purposes",
+          confidence: 0.95,
+          functionCalls: [
+            {
+              function: "getCELOBalance",
+              parameters: { address: DEFAULT_ADDRESS },
+              priority: 1
+            }
+          ]
+        });
+      }
+      
+      const parsedResult = this.parseAIResponse(result);
+      
+      history.push({
+        input,
+        output: parsedResult,
+        timestamp: new Date().toISOString()
+      });
+      this.conversationHistory.set(sessionId, history.slice(-10));
       
       const executionResults = await this.executeFunctionCalls(parsedResult.functionCalls, context);
+      
+      this.storeInteraction({
+        sessionId,
+        input,
+        functionCalls: parsedResult.functionCalls,
+        results: executionResults,
+        confidence: parsedResult.confidence,
+        reasoning: parsedResult.reasoning
+      });
       
       return {
         success: true,
         functionCalls: parsedResult.functionCalls,
         results: executionResults,
         reasoning: parsedResult.reasoning,
-        confidence: parsedResult.confidence,
-        agent: 'legacy'
+        confidence: parsedResult.confidence
       };
       
     } catch (error) {
@@ -1229,20 +1216,17 @@ Response:
         let txHash;
         let realTransaction = false;
 
-        if (this.config.enableRealBlockchainCalls && this.walletClient && this.account) {
+        if (this.config.enableRealBlockchainCalls && this.walletClient) {
           try {
-            // Execute real transaction on blockchain with proper account
+            // Execute real transaction on blockchain
             txHash = await this.walletClient.sendTransaction({
               to,
               value: BigInt(value || '0'),
-              data: data || '0x'
+              data: data || '0x',
+              account: fromAddress
             });
             realTransaction = true;
             console.log(`🔗 Real transaction sent: ${txHash}`);
-            
-            // Wait for confirmation
-            const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
-            console.log(`✅ Transaction confirmed in block: ${receipt.blockNumber}`);
           } catch (error) {
             console.warn(`⚠️ Real transaction failed, using simulated: ${error.message}`);
             // Fall back to simulated transaction
@@ -1251,10 +1235,6 @@ Response:
         } else {
           // Generate simulated transaction hash
           txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
-          
-          if (!this.account) {
-            console.warn('⚠️ No wallet account configured - using simulated transaction');
-          }
         }
 
         // Register transaction with tracker

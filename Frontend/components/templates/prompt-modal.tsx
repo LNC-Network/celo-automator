@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, Send } from "lucide-react"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 
 interface PromptModalProps {
   open: boolean
@@ -31,6 +32,7 @@ export default function PromptModal({ open, onOpenChange, templateName = "Templa
 
       // Success - you can add a toast notification here
       setPrompt("")
+      toast.success("Automation created successfully")
       onOpenChange(false)
     } catch (error) {
       console.error("Error processing prompt:", error)

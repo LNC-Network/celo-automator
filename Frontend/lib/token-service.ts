@@ -25,12 +25,12 @@ export interface Token {
   value?: number
 }
 
-// Common Celo tokens (Alfajores testnet)
+// Common Celo tokens (Alfajores testnet) - using correct addresses
 export const COMMON_TOKENS = {
-  CELO: "0x471EcE3750Da237f93B8E339c536989b8978a438",
-  cUSD: "0x874069Fa1Eb16D44d62F6a2e4c8B0C1C3b1C5C1C",
-  cEUR: "0x10c892A6ECfc32b4C1C6Cb8C1C3b1C5C1C3b1C5C1C",
-  cREAL: "0x00Be915B9dCf56a3CBE739D9B9c202ca692409EC",
+  CELO: "0xF194afDf50B03e69Bd7D057c1Aa9e10c9954E4C9", // CELO token on Alfajores
+  cUSD: "0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1", // cUSD on Alfajores
+  cEUR: "0x10c892A6EC43a53E45D0B916B4b7D383B1b78C0F", // cEUR on Alfajores
+  cREAL: "0x00Be915B9dCf56a3CBE739D9B9c202ca692409EC", // cREAL on Alfajores
 }
 
 /**
@@ -54,6 +54,13 @@ export async function getTokenBalance(
       return "0"
     }
 
+    // Check if the address is a contract
+    const code = await provider.getCode(tokenAddress)
+    if (code === "0x") {
+      console.warn(`[Token Service] No contract found at address: ${tokenAddress}`)
+      return "0"
+    }
+
     const contract = new ethers.Contract(
       tokenAddress,
       ERC20_ABI,
@@ -61,8 +68,14 @@ export async function getTokenBalance(
     )
 
     const [balance, decimals] = await Promise.all([
-      contract.balanceOf(walletAddress),
-      contract.decimals(),
+      contract.balanceOf(walletAddress).catch((err: any) => {
+        console.warn(`[Token Service] balanceOf failed for ${tokenAddress}:`, err.message)
+        return ethers.parseUnits("0", 18) // Return 0 balance if balanceOf fails
+      }),
+      contract.decimals().catch((err: any) => {
+        console.warn(`[Token Service] decimals failed for ${tokenAddress}:`, err.message)
+        return 18 // Default to 18 decimals if decimals() fails
+      }),
     ])
 
     return ethers.formatUnits(balance, decimals)
@@ -87,6 +100,12 @@ export async function getTokenMetadata(
       throw new Error(`Invalid token address: ${tokenAddress}`)
     }
 
+    // Check if the address is a contract
+    const code = await provider.getCode(tokenAddress)
+    if (code === "0x") {
+      throw new Error(`No contract found at address: ${tokenAddress}`)
+    }
+
     const contract = new ethers.Contract(
       tokenAddress,
       ERC20_ABI,
@@ -94,9 +113,18 @@ export async function getTokenMetadata(
     )
 
     const [symbol, name, decimals] = await Promise.all([
-      contract.symbol(),
-      contract.name(),
-      contract.decimals(),
+      contract.symbol().catch((err: any) => {
+        console.warn(`[Token Service] symbol failed for ${tokenAddress}:`, err.message)
+        return "UNKNOWN"
+      }),
+      contract.name().catch((err: any) => {
+        console.warn(`[Token Service] name failed for ${tokenAddress}:`, err.message)
+        return "Unknown Token"
+      }),
+      contract.decimals().catch((err: any) => {
+        console.warn(`[Token Service] decimals failed for ${tokenAddress}:`, err.message)
+        return 18
+      }),
     ])
 
     return {

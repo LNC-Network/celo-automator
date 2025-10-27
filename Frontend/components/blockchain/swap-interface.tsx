@@ -159,28 +159,16 @@ export function SwapInterface() {
 
     setLoading(true)
     try {
-      // Call the swap function with the quote data
-      const response = await apiClient.callBlockchainFunction({
-        functionName: 'swapTokens',
-        parameters: {
-          tokenIn: data.tokenIn,
-          tokenOut: data.tokenOut,
-          amountIn: data.amountIn,
-          amountOut: quote.amountOut,
-          minAmountOut: quote.minimumReceived,
-          slippage: data.slippage,
-          from: wallet.address
-        }
-      })
+      const txHash = await blockchainIntegration.swapTokens(
+        data.tokenIn,
+        data.tokenOut,
+        data.amountIn,
+        quote.minimumReceived,
+        data.slippage
+      )
       
-      if (response.success && response.data) {
-        console.log("Swap successful:", response.data.txHash)
-        // Reset form
-        form.reset()
-        setQuote(null)
-      } else {
-        throw new Error(response.error || 'Swap failed')
-      }
+      // Show success message or redirect
+      console.log("Swap successful:", txHash)
     } catch (error) {
       console.error("Swap failed:", error)
     } finally {
