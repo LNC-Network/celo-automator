@@ -1,8 +1,30 @@
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { readFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Load .env file from Backend directory
+try {
+  const envPath = `${__dirname}/Backend/.env`;
+  const envContent = readFileSync(envPath, 'utf-8');
+  envContent.split('\n').forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      const value = valueParts.join('=').trim();
+      if (key && value) {
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+  console.log('📁 Loaded environment variables from Backend/.env');
+} catch (error) {
+  console.log('⚠️  Backend/.env file not found - using environment variables only');
+}
 
 import('./Backend/automation-system.js').then(async (module) => {
   const AutomationSystem = module.default;
