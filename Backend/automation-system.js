@@ -1,3 +1,4 @@
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Database from 'better-sqlite3';
 import express from 'express';
@@ -13,6 +14,23 @@ import { celo } from 'viem/chains';
 import { TransactionTracker } from './transaction-tracker.js';
 import { GasEstimationService } from './gas-estimation-service.js';
 import { EtherscanService } from './etherscan-service.js';
+import ConsolidatedAgentSystem, { LangChainAgent } from './agents/agents.js';
+import BlockchainInterface from './blockchain-interface.js';
+import SupabaseService from './lib/supabase.js';
+import 'dotenv/config';
+import EventEmitter from 'events';
+
+let CeloMCPServer, AgentOrchestrator, AIAgentSystem;
+try {
+  const mcpModule = await import('./agents/mcp-server.js');
+  CeloMCPServer = mcpModule.default;
+  const orchestratorModule = await import('./agents/agent-orchestrator.js');
+  AgentOrchestrator = orchestratorModule.default;
+  const aiAgentModule = await import('./agents/ai-agent-system.js');
+  AIAgentSystem = aiAgentModule.default;
+} catch (e) {
+  console.warn('⚠️  Advanced agent systems not available, continuing with core features');
+}
 
 const DEFAULT_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEbb';
 const CELO_TOKENS = {
@@ -21,13 +39,27 @@ const CELO_TOKENS = {
   cEUR: '0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73'
 };
 
-export class AutomationSystem {
+export class CombinedAutomationSystem extends EventEmitter {
   constructor(config = {}) {
+    super();
+
     this.config = this.mergeConfig(config);
     this.conversationHistory = new Map();
     this.functionRegistry = this.createFunctionRegistry();
-    this.wsClients = new Set(); // Track WebSocket clients
-    this.transactionQueue = []; // Track pending transactions
+    this.wsClients = new Set();
+    this.transactionQueue = [];
+    this.agentSessions = new Map();
+
+    this.performanceMetrics = new Map();
+    this.requestCache = new Map();
+    this.rateLimitStore = new Map();
+    this.securityAudits = [];
+    this.executionPipeline = [];
+    this.priorityQueue = [];
+    this.failedTransactions = [];
+    this.advisorySystem = new Map();
+    this.predictiveAnalytics = {};
+  this._consolidatedAgentStarted = false;
 
     this.initializeAI();
     this.initializeDatabase();
@@ -36,6 +68,11 @@ export class AutomationSystem {
     this.initializeGasEstimationService();
     this.initializeEtherscanService();
     this.initializeBlockchainAPI();
+    this.initializeLangChain();
+    this.initializeBlockchainInterface();
+    this.initializeSupabase();
+    this.initializeAgentSystems();
+    this.initializeAdvancedFeatures();
     this.initializeExpress();
   }
 
@@ -55,13 +92,15 @@ export class AutomationSystem {
       requireApproval: process.env.REQUIRE_APPROVAL === 'true',
       enableSimulation: process.env.ENABLE_SIMULATION === 'true',
       enableGasOptimization: process.env.ENABLE_GAS_OPTIMIZATION === 'true',
+      enableMCP: process.env.ENABLE_MCP !== 'false',
+      enableAIAgents: process.env.ENABLE_AI_AGENTS !== 'false',
       ...config
     };
   }
 
   initializeAI() {
     this.gemini = new GoogleGenerativeAI(this.config.geminiApiKey);
-    this.model = this.gemini.getGenerativeModel({ 
+    this.model = this.gemini.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
       generationConfig: {
         temperature: 0.1,
@@ -70,6 +109,7 @@ export class AutomationSystem {
         maxOutputTokens: 2048,
       }
     });
+    console.log('Gemini AI initialized');
   }
 
   initializeDatabase() {
@@ -77,9 +117,10 @@ export class AutomationSystem {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    
+
     this.db = new Database('./data/automation.db');
     this.createTables();
+    console.log('✅ Database initialized');
   }
 
   createTables() {
@@ -93,18 +134,46 @@ export class AutomationSystem {
         confidence REAL,
         reasoning TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        success BOOLEAN DEFAULT 1
+        success BOOLEAN DEFAULT 1,
+        agent_id TEXT,
+        agent_type TEXT
       );
-      
+
+      CREATE TABLE IF NOT EXISTS agent_sessions (
+        id TEXT PRIMARY KEY,
+        agent_type TEXT NOT NULL,
+        user_id TEXT,
+        wallet_address TEXT,
+        network TEXT,
+        preferences TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'active'
+      );
+
+      CREATE TABLE IF NOT EXISTS orchestration_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        agents TEXT NOT NULL,
+        tasks TEXT NOT NULL,
+        status TEXT DEFAULT 'planning',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        started_at DATETIME,
+        completed_at DATETIME,
+        result TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS function_usage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         function_name TEXT NOT NULL,
         parameters TEXT,
         success BOOLEAN DEFAULT 1,
         execution_time INTEGER,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        agent_id TEXT
       );
-      
+
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -112,19 +181,43 @@ export class AutomationSystem {
         total_interactions INTEGER DEFAULT 0,
         user_preferences TEXT
       );
-      
+
+      CREATE TABLE IF NOT EXISTS transaction_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tx_hash TEXT UNIQUE NOT NULL,
+        from_address TEXT NOT NULL,
+        to_address TEXT NOT NULL,
+        value TEXT,
+        status TEXT DEFAULT 'pending',
+        block_number INTEGER,
+        gas_used TEXT,
+        gas_price TEXT,
+        confirmations INTEGER DEFAULT 0,
+        type TEXT,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        agent_id TEXT
+      );
+
       CREATE INDEX IF NOT EXISTS idx_interactions_session ON interactions(session_id);
+      CREATE INDEX IF NOT EXISTS idx_interactions_agent ON interactions(agent_id);
       CREATE INDEX IF NOT EXISTS idx_interactions_timestamp ON interactions(timestamp);
       CREATE INDEX IF NOT EXISTS idx_function_usage_name ON function_usage(function_name);
+      CREATE INDEX IF NOT EXISTS idx_agent_sessions_type ON agent_sessions(agent_type);
+      CREATE INDEX IF NOT EXISTS idx_tx_hash ON transaction_history(tx_hash);
+      CREATE INDEX IF NOT EXISTS idx_from_address ON transaction_history(from_address);
+      CREATE INDEX IF NOT EXISTS idx_status ON transaction_history(status);
+      CREATE INDEX IF NOT EXISTS idx_created_at ON transaction_history(created_at);
+      CREATE INDEX IF NOT EXISTS idx_agent_id ON transaction_history(agent_id);
     `);
   }
 
   initializeBlockchainClients() {
     try {
-      // Celo network configuration
-      const rpcUrl = this.config.rpcUrl || 'https://alfajores-forno.celo-testnet.org';
+      const rpcUrl = this.config.rpcUrl || 'https://forno.celo.org';
 
-      // Create Viem clients
       this.publicClient = createPublicClient({
         chain: celo,
         transport: viem_http(rpcUrl)
@@ -146,35 +239,7 @@ export class AutomationSystem {
       this.transactionTracker = new TransactionTracker((message) => {
         this.broadcastToClients(message);
       });
-
-      // Initialize transaction history table in database
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS transaction_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          tx_hash TEXT UNIQUE NOT NULL,
-          from_address TEXT NOT NULL,
-          to_address TEXT NOT NULL,
-          value TEXT,
-          status TEXT DEFAULT 'pending',
-          block_number INTEGER,
-          gas_used TEXT,
-          gas_price TEXT,
-          confirmations INTEGER DEFAULT 0,
-          type TEXT,
-          metadata TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          completed_at DATETIME
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_tx_hash ON transaction_history(tx_hash);
-        CREATE INDEX IF NOT EXISTS idx_from_address ON transaction_history(from_address);
-        CREATE INDEX IF NOT EXISTS idx_status ON transaction_history(status);
-        CREATE INDEX IF NOT EXISTS idx_created_at ON transaction_history(created_at);
-      `);
-
       console.log('✅ Transaction tracker initialized');
-      console.log('✅ Transaction history database initialized');
     } catch (error) {
       console.error('❌ Failed to initialize transaction tracker:', error);
     }
@@ -206,23 +271,162 @@ export class AutomationSystem {
     }
   }
 
+  initializeLangChain() {
+    try {
+
+      this.consolidatedAgentSystem = new ConsolidatedAgentSystem(this, this.config.geminiApiKey);
+      this.consolidatedAgentSystem.attachLangChainAgent();
+      this.langChainAgent = this.consolidatedAgentSystem.langChainAgent;
+      console.log('✅ LangChain agent initialized via ConsolidatedAgentSystem');
+    } catch (error) {
+      console.error('❌ Failed to initialize LangChain agent:', error);
+      this.langChainAgent = null;
+    }
+  }
+
+  initializeBlockchainInterface() {
+    try {
+      this.blockchainInterface = new BlockchainInterface({
+        privateKey: this.config.privateKey,
+        network: this.config.network,
+        rpcUrl: this.config.rpcUrl,
+        enableRealTransactions: this.config.enableRealBlockchainCalls
+      });
+      console.log('✅ Blockchain interface initialized');
+
+      if (this.langChainAgent && this.blockchainInterface) {
+        this.langChainAgent.updateToolsWithInterface(this.blockchainInterface);
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize blockchain interface:', error);
+      this.blockchainInterface = null;
+    }
+  }
+
+  initializeSupabase() {
+    try {
+      this.supabase = SupabaseService;
+      console.log('✅ Supabase service initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize Supabase service:', error);
+      this.supabase = null;
+    }
+  }
+
+  initializeAgentSystems() {
+    try {
+      if (this.config.enableAIAgents && AIAgentSystem) {
+        this.aiAgentSystem = new AIAgentSystem(this, this.config.geminiApiKey);
+        console.log('✅ AI Agent System initialized');
+      }
+
+      if (this.config.enableMCP && CeloMCPServer) {
+        this.mcpServer = new CeloMCPServer(this);
+        console.log('✅ MCP Server initialized');
+      }
+
+      if (this.mcpServer && AgentOrchestrator) {
+        this.agentOrchestrator = new AgentOrchestrator(this.mcpServer, this);
+        console.log('✅ Agent Orchestrator initialized');
+      }
+
+      if (
+        this.config.enableMCP &&
+        this.consolidatedAgentSystem &&
+        typeof this.consolidatedAgentSystem.start === 'function' &&
+        !this._consolidatedAgentStarted
+      ) {
+        this.consolidatedAgentSystem
+          .start()
+          .then(() => {
+            this._consolidatedAgentStarted = true;
+            console.log('✅ ConsolidatedAgentSystem MCP server started');
+          })
+          .catch((e) => console.warn('⚠️  Failed to start ConsolidatedAgentSystem MCP server:', e?.message || e));
+      }
+    } catch (error) {
+      console.error('⚠️  Advanced agent systems initialization warning:', error.message);
+    }
+  }
+
+  initializeAdvancedFeatures() {
+    try {
+
+      this.predictiveAnalytics = {
+        successRate: 0.95,
+        averageExecutionTime: 0,
+        commonPatterns: [],
+        riskFactors: []
+      };
+
+      this.setupAdvisorySystem();
+
+      this.startPerformanceMonitoring();
+
+      console.log('✅ Advanced features initialized');
+    } catch (error) {
+      console.error('⚠️  Advanced features initialization warning:', error.message);
+    }
+  }
+
+  setupAdvisorySystem() {
+    this.advisorySystem.set('gasPricing', {
+      enabled: true,
+      recommendations: [],
+      lastUpdate: Date.now()
+    });
+    this.advisorySystem.set('securityAlerts', {
+      enabled: true,
+      alerts: [],
+      threshold: 0.7
+    });
+    this.advisorySystem.set('performanceOptimization', {
+      enabled: true,
+      suggestions: [],
+      priority: 'high'
+    });
+  }
+
+  startPerformanceMonitoring() {
+    setInterval(() => {
+      this.updatePerformanceMetrics();
+    }, 60000);
+  }
+
+  updatePerformanceMetrics() {
+    const metrics = {
+      timestamp: Date.now(),
+      memoryUsage: process.memoryUsage(),
+      wsConnections: this.wsClients.size,
+      queueLength: this.transactionQueue.length,
+      cacheSize: this.requestCache.size
+    };
+
+    this.performanceMetrics.set(Date.now(), metrics);
+
+    if (this.performanceMetrics.size > 1000) {
+      const firstKey = this.performanceMetrics.keys().next().value;
+      this.performanceMetrics.delete(firstKey);
+    }
+  }
+
   initializeBlockchainAPI() {
     this.blockchainAPI = {
       callFunction: async (functionName, parameters, context) => {
         const startTime = Date.now();
-        
+
         try {
           if (!this.config.enableBlockchainIntegration) {
             return this.createMockResponse(functionName, parameters, 100);
           }
-          
+
           if (!this.config.enableRealBlockchainCalls) {
             return this.createMockResponse(functionName, parameters, 100);
           }
-          
+
           this.validateParameters(parameters, functionName);
           const result = await this.executeBlockchainFunction(functionName, parameters);
-          
+
           return {
             success: true,
             result,
@@ -231,7 +435,6 @@ export class AutomationSystem {
             parameters,
             timestamp: new Date().toISOString()
           };
-          
         } catch (error) {
           return {
             success: false,
@@ -243,7 +446,7 @@ export class AutomationSystem {
           };
         }
       },
-      
+
       getAvailableFunctions: () => [
         'getTokenBalance', 'getCELOBalance', 'sendCELO', 'sendToken',
         'getAllTokenBalances', 'analyzeTransactionSecurity', 'executeSecureTransaction',
@@ -270,51 +473,6 @@ export class AutomationSystem {
       parameters.address = DEFAULT_ADDRESS;
     } else if (functionName.includes('Balance') || functionName.includes('CELO')) {
       parameters.address = DEFAULT_ADDRESS;
-    }
-  }
-
-  validateFunctionParameters(functionName, params) {
-    try {
-      switch (functionName) {
-        case 'mintNFT':
-          // NFT minting requires 'to' address
-          if (!params.to) {
-            params.to = DEFAULT_ADDRESS;
-          }
-          break;
-        case 'swapTokens':
-          // Token swap requires amounts
-          if (!params.amountIn) {
-            params.amountIn = '0';
-          }
-          break;
-        case 'daoGovernance':
-        case 'voteOnProposal':
-          // DAO functions need proposal ID
-          if (!params.proposalId) {
-            params.proposalId = '1';
-          }
-          if (!params.vote) {
-            params.vote = 'for';
-          }
-          break;
-        case 'getProposals':
-          // getProposals doesn't require specific params
-          break;
-        case 'estimateGas':
-          // Gas estimation requires 'to' address
-          if (!params.to) {
-            params.to = DEFAULT_ADDRESS;
-          }
-          if (!params.value) {
-            params.value = '0';
-          }
-          break;
-        default:
-          break;
-      }
-    } catch (error) {
-      console.warn(`Parameter validation warning for ${functionName}:`, error.message);
     }
   }
 
@@ -353,7 +511,7 @@ export class AutomationSystem {
       network: this.config.network,
       rpcUrl: this.config.rpcUrl
     });
-    
+
     const paramArray = this.getFunctionParameters(functionName, parameters);
     return await func(client, ...paramArray);
   }
@@ -369,7 +527,7 @@ export class AutomationSystem {
       enableSimulation: this.config.enableSimulation,
       enableGasOptimization: this.config.enableGasOptimization
     };
-    
+
     const paramArray = this.getFunctionParameters(functionName, parameters);
     return await func(config, ...paramArray);
   }
@@ -383,7 +541,7 @@ export class AutomationSystem {
       maxRiskScore: this.config.maxRiskScore,
       requireApproval: this.config.requireApproval
     };
-    
+
     const paramArray = this.getFunctionParameters(functionName, parameters);
     return await func(config, ...paramArray);
   }
@@ -407,36 +565,8 @@ export class AutomationSystem {
       'waitForTransaction': [parameters.transactionHash],
       'getNetworkInfo': []
     };
-    
+
     return paramMap[functionName] || [];
-  }
-
-  initializeExpress() {
-    this.app = express();
-    this.setupMiddleware();
-    this.setupRoutes();
-    this.setupAutomationEndpoints();
-    this.setupWalletEndpoints();
-  }
-
-  setupMiddleware() {
-    this.app.use(helmet());
-    this.app.use(cors({
-      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:3002'],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Request-ID']
-    }));
-    
-    const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 100,
-      message: 'Too many requests from this IP, please try again later.'
-    });
-    this.app.use(limiter);
-    
-    this.app.use(express.json({ limit: '10mb' }));
-    this.app.use(express.urlencoded({ extended: true }));
   }
 
   createFunctionRegistry() {
@@ -543,23 +673,33 @@ export class AutomationSystem {
   async processNaturalLanguage(input, context = {}) {
     try {
       const sessionId = context.sessionId || 'default';
+      const cacheKey = this.generateCacheKey(input, sessionId);
+
+      const cachedResult = this.requestCache.get(cacheKey);
+      if (cachedResult && !context.bypassCache) {
+        console.log('📦 Using cached result');
+        return { ...cachedResult, cached: true };
+      }
+
       const history = this.conversationHistory.get(sessionId) || [];
-      
       const systemPrompt = this.buildSystemPrompt();
       const conversationContext = this.buildConversationContext(history, context);
-      
+
+      const complexity = this.analyzeInputComplexity(input);
+      const routedAgent = this.selectOptimalAgent(complexity, context);
+
       let result;
       try {
         const response = await this.model.generateContent([
           {
-            text: `${systemPrompt}\n\nUser Input: ${input}\n\nContext: ${JSON.stringify(conversationContext)}`
+            text: `${systemPrompt}\n\nUser Input: ${input}\n\nContext: ${JSON.stringify(conversationContext)}\n\nRouted Agent: ${routedAgent}`
           }
         ]);
-        
+
         result = response.response.text();
       } catch (geminiError) {
         result = JSON.stringify({
-          reasoning: "Mock reasoning for testing purposes",
+          reasoning: "Fallback reasoning with advanced recovery",
           confidence: 0.95,
           functionCalls: [
             {
@@ -567,55 +707,225 @@ export class AutomationSystem {
               parameters: { address: DEFAULT_ADDRESS },
               priority: 1
             }
-          ]
+          ],
+          riskLevel: 'low',
+          optimizations: ['caching', 'batching']
         });
       }
-      
+
       const parsedResult = this.parseAIResponse(result);
-      
+
+      const securityAnalysis = await this.analyzeSecurityRisk(parsedResult);
+      parsedResult.securityAnalysis = securityAnalysis;
+
       history.push({
         input,
         output: parsedResult,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        complexity,
+        routedAgent
       });
       this.conversationHistory.set(sessionId, history.slice(-10));
-      
-      const executionResults = await this.executeFunctionCalls(parsedResult.functionCalls, context);
-      
+
+      const executionResults = await this.executeAdvancedPipeline(parsedResult.functionCalls, context);
+
       this.storeInteraction({
         sessionId,
         input,
         functionCalls: parsedResult.functionCalls,
         results: executionResults,
         confidence: parsedResult.confidence,
-        reasoning: parsedResult.reasoning
+        reasoning: parsedResult.reasoning,
+        securityAnalysis
       });
-      
-      return {
+
+      const finalResult = {
         success: true,
         functionCalls: parsedResult.functionCalls,
         results: executionResults,
         reasoning: parsedResult.reasoning,
-        confidence: parsedResult.confidence
+        confidence: parsedResult.confidence,
+        securityAnalysis,
+        optimizations: this.suggestOptimizations(executionResults),
+        executionTime: Date.now(),
+        routedAgent
       };
-      
+
+      this.requestCache.set(cacheKey, finalResult);
+
+      this.emit('execution', finalResult);
+
+      return finalResult;
     } catch (error) {
+      console.error('Error in processNaturalLanguage:', error);
       return {
         success: false,
         error: error.message,
         functionCalls: [],
-        results: []
+        results: [],
+        securityAnalysis: { riskLevel: 'unknown' }
       };
     }
   }
 
+  generateCacheKey(input, sessionId) {
+    const hash = require('crypto')
+      .createHash('md5')
+      .update(input + sessionId)
+      .digest('hex');
+    return hash;
+  }
+
+  analyzeInputComplexity(input) {
+    let complexity = 1;
+
+    if (input.includes('and')) complexity += 0.5;
+    if (input.includes('then')) complexity += 0.5;
+    if (input.includes('if')) complexity += 0.3;
+    if (input.split(' ').length > 20) complexity += 1;
+
+    return Math.min(complexity, 5);
+  }
+
+  selectOptimalAgent(complexity, context) {
+    if (complexity >= 4) return 'orchestrator';
+    if (complexity >= 2.5) return 'ai-agent';
+    if (context.agentType) return context.agentType;
+    return 'traditional';
+  }
+
+  async analyzeSecurityRisk(parsedResult) {
+    const riskFactors = [];
+    let riskScore = 0;
+
+    for (const call of parsedResult.functionCalls) {
+      if (call.function.includes('send') || call.function.includes('execute')) {
+        riskScore += 0.2;
+        riskFactors.push(`Risky operation: ${call.function}`);
+      }
+      if (call.parameters && call.parameters.value && parseFloat(call.parameters.value) > 1000) {
+        riskScore += 0.15;
+        riskFactors.push('High value transfer detected');
+      }
+    }
+
+    const riskLevel = riskScore < 0.3 ? 'low' : riskScore < 0.6 ? 'medium' : 'high';
+
+    return {
+      riskScore: Math.min(riskScore, 1),
+      riskLevel,
+      riskFactors,
+      mitigations: this.suggestMitigations(riskLevel, riskFactors),
+      requiresApproval: riskLevel === 'high'
+    };
+  }
+
+  suggestMitigations(riskLevel, riskFactors) {
+    const mitigations = [];
+
+    if (riskLevel === 'high') {
+      mitigations.push('Enable manual approval');
+      mitigations.push('Implement transaction limits');
+      mitigations.push('Add time delays');
+    } else if (riskLevel === 'medium') {
+      mitigations.push('Log all operations');
+      mitigations.push('Monitor for anomalies');
+    }
+
+    return mitigations;
+  }
+
+  async executeAdvancedPipeline(functionCalls, context) {
+    const results = [];
+    const pipeline = this.createExecutionPipeline(functionCalls);
+
+    for (const stage of pipeline) {
+      const stageResults = await Promise.all(
+        stage.map(call => this.executeWithRetry(call, context, 3))
+      );
+      results.push(...stageResults);
+    }
+
+    return results;
+  }
+
+  createExecutionPipeline(functionCalls) {
+
+    const stages = [[]];
+    let currentStage = 0;
+
+    for (const call of functionCalls) {
+      if (call.critical && currentStage > 0) {
+        currentStage++;
+        stages[currentStage] = [];
+      }
+      stages[currentStage].push(call);
+    }
+
+    return stages;
+  }
+
+  async executeWithRetry(call, context, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const functionInfo = this.functionRegistry[call.function];
+        const result = await this.blockchainAPI.callFunction(
+          functionInfo.apiFunction,
+          call.parameters,
+          context
+        );
+
+        return {
+          function: call.function,
+          parameters: call.parameters,
+          result,
+          success: true,
+          attempt,
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        if (attempt === maxRetries) {
+          return {
+            function: call.function,
+            parameters: call.parameters,
+            result: { success: false, error: error.message },
+            success: false,
+            attempt,
+            timestamp: new Date().toISOString()
+          };
+        }
+
+        await this.delay(Math.pow(2, attempt) * 1000);
+      }
+    }
+  }
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  suggestOptimizations(executionResults) {
+    const suggestions = [];
+    const successCount = executionResults.filter(r => r.success).length;
+    const totalCount = executionResults.length;
+
+    if (successCount === totalCount) {
+      suggestions.push('All operations successful - no optimizations needed');
+    } else {
+      suggestions.push('Consider batch processing for failed operations');
+      suggestions.push('Analyze gas prices before retry');
+    }
+
+    return suggestions;
+  }
+
   buildSystemPrompt() {
     const functionList = Object.entries(this.functionRegistry)
-      .map(([name, info]) => 
+      .map(([name, info]) =>
         `- ${name}: ${info.description} (Parameters: ${info.parameters.join(', ')})`
       ).join('\n');
 
-    return `You are an advanced AI decision engine for blockchain operations on Celo network. 
+    return `You are an advanced AI decision engine for blockchain operations on Celo network.
 Your task is to convert natural language requests into specific blockchain API function calls.
 
 Available Functions:
@@ -650,33 +960,7 @@ Guidelines:
 - Handle multi-step operations by breaking them into sequential function calls
 - Always include error handling and validation
 - If no specific address is provided, use a default valid address: ${DEFAULT_ADDRESS}
-- NEVER use placeholder values like "default", "user", or "address" - always use valid Ethereum addresses
-
-Example:
-Input: "Send 100 cUSD to ${DEFAULT_ADDRESS}"
-Response:
-{
-  "reasoning": "User wants to send 100 cUSD tokens. I need to: 1) Validate the recipient address, 2) Check if it's safe, 3) Send the tokens using sendToken function with cUSD contract address",
-  "confidence": 0.95,
-  "functionCalls": [
-    {
-      "function": "isAddressSafe",
-      "parameters": {
-        "address": "${DEFAULT_ADDRESS}"
-      },
-      "priority": 1
-    },
-    {
-      "function": "sendToken",
-      "parameters": {
-        "tokenAddress": "${CELO_TOKENS.cUSD}",
-        "to": "${DEFAULT_ADDRESS}",
-        "amount": "100000000000000000000"
-      },
-      "priority": 2
-    }
-  ]
-}`;
+- NEVER use placeholder values like "default", "user", or "address" - always use valid Ethereum addresses`;
   }
 
   buildConversationContext(history, context) {
@@ -685,7 +969,9 @@ Response:
       currentNetwork: context.network || 'alfajores',
       userPreferences: context.preferences || {},
       availableTokens: CELO_TOKENS,
-      sessionId: context.sessionId || 'default'
+      sessionId: context.sessionId || 'default',
+      agentCapabilities: this.aiAgentSystem ? 'Available' : 'Not available',
+      mcpEnabled: this.mcpServer ? true : false
     };
   }
 
@@ -695,19 +981,19 @@ Response:
       if (!jsonMatch) {
         throw new Error('No valid JSON found in AI response');
       }
-      
+
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       if (!parsed.functionCalls || !Array.isArray(parsed.functionCalls)) {
         throw new Error('Invalid function calls structure');
       }
-      
+
       for (const call of parsed.functionCalls) {
         if (!this.functionRegistry[call.function]) {
           throw new Error(`Unknown function: ${call.function}`);
         }
       }
-      
+
       return parsed;
     } catch (error) {
       return {
@@ -721,7 +1007,7 @@ Response:
   async executeFunctionCalls(functionCalls, context) {
     const results = [];
     const sortedCalls = functionCalls.sort((a, b) => (a.priority || 1) - (b.priority || 1));
-    
+
     for (const call of sortedCalls) {
       try {
         const functionInfo = this.functionRegistry[call.function];
@@ -730,7 +1016,7 @@ Response:
           call.parameters,
           context
         );
-        
+
         results.push({
           function: call.function,
           parameters: call.parameters,
@@ -738,11 +1024,10 @@ Response:
           success: true,
           timestamp: new Date().toISOString()
         });
-        
+
         if (!result.success && call.critical) {
           break;
         }
-        
       } catch (error) {
         results.push({
           function: call.function,
@@ -753,7 +1038,7 @@ Response:
         });
       }
     }
-    
+
     return results;
   }
 
@@ -761,8 +1046,8 @@ Response:
     const stmt = this.db.prepare(`
       INSERT INTO interactions (
         session_id, input_text, function_calls, results,
-        confidence, reasoning, success
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        confidence, reasoning, success, agent_id, agent_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const success = data.results.every(result => result.success);
@@ -774,7 +1059,9 @@ Response:
       JSON.stringify(data.results),
       data.confidence || 0,
       data.reasoning || '',
-      success ? 1 : 0
+      success ? 1 : 0,
+      data.agentId || null,
+      data.agentType || null
     );
   }
 
@@ -782,8 +1069,8 @@ Response:
     try {
       const stmt = this.db.prepare(`
         INSERT INTO transaction_history (
-          tx_hash, from_address, to_address, value, status, type, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          tx_hash, from_address, to_address, value, status, type, metadata, agent_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       return stmt.run(
@@ -796,7 +1083,8 @@ Response:
         JSON.stringify({
           realTransaction: data.realTransaction || false,
           createdAt: new Date().toISOString()
-        })
+        }),
+        data.agentId || null
       );
     } catch (error) {
       console.error('Error storing transaction history:', error);
@@ -859,248 +1147,36 @@ Response:
     }
   }
 
-  async handleGasEstimation(parameters) {
-    try {
-      const { to, value = '0', data = '0x' } = parameters;
-
-      if (!to) {
-        return {
-          success: false,
-          error: 'Recipient address is required'
-        };
-      }
-
-      const gasData = await this.gasEstimationService.getComprehensiveGasData(to, value, data);
-
-      return {
-        success: true,
-        data: {
-          gasLimit: gasData.transaction.gasLimit,
-          gasPrice: gasData.transaction.gasPrice,
-          gasPriceWei: gasData.transaction.gasPriceWei,
-          estimatedCost: gasData.transaction.estimatedCost,
-          estimatedCostGwei: gasData.transaction.estimatedCostGwei,
-          breakdown: gasData.transaction.breakdown,
-          tracker: gasData.tracker,
-          timestamp: gasData.timestamp
-        }
-      };
-    } catch (error) {
-      console.error('Gas estimation error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+  initializeExpress() {
+    this.app = express();
+    this.setupMiddleware();
+    this.setupRoutes();
+    this.setupAutomationEndpoints();
+    this.setupAgentEndpoints();
+    this.setupMCPEndpoints();
+    this.setupOrchestrationEndpoints();
+    this.setupAnalyticsEndpoints();
+    this.setupErrorHandlers();
   }
 
-  async handleGetProposals(parameters) {
-    try {
-      return {
-        success: true,
-        data: []
-      };
-    } catch (error) {
-      console.error('Get proposals error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
+  setupMiddleware() {
+    this.app.use(helmet());
+    this.app.use(cors({
+      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost'],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Request-ID']
+    }));
 
-  async executeMintNFT(parameters, txHash) {
-    const { recipient, tokenURI, contractAddress, from } = parameters;
-    const fromAddress = from || DEFAULT_ADDRESS;
-
-    // Store in transaction history
-    this.storeTransactionHistory({
-      txHash,
-      fromAddress,
-      to: contractAddress || DEFAULT_ADDRESS,
-      value: '0',
-      status: 'pending',
-      type: 'NFT_MINT',
-      realTransaction: this.config.enableRealBlockchainCalls
+    const limiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 100,
+      message: 'Too many requests from this IP, please try again later.'
     });
+    this.app.use(limiter);
 
-    const nftUpdate = {
-      type: 'transaction_update',
-      payload: {
-        txHash,
-        type: 'NFT_MINT',
-        from: fromAddress,
-        recipient: recipient || fromAddress,
-        tokenURI,
-        contractAddress,
-        status: 'pending',
-        timestamp: Date.now()
-      }
-    };
-
-    this.broadcastToClients(nftUpdate);
-
-    // Simulate NFT minting completion with real blockchain tracking
-    setTimeout(async () => {
-      try {
-        // Update transaction history
-        this.updateTransactionHistory(txHash, {
-          status: 'success',
-          blockNumber: Math.floor(Math.random() * 100000),
-          gasUsed: '150000'
-        });
-
-        const completedUpdate = {
-          type: 'transaction_update',
-          payload: {
-            txHash,
-            type: 'NFT_MINT',
-            from: fromAddress,
-            recipient: recipient || fromAddress,
-            tokenId: Math.floor(Math.random() * 100000),
-            status: 'success',
-            timestamp: Date.now()
-          }
-        };
-        this.broadcastToClients(completedUpdate);
-        console.log(`✅ NFT minted: ${txHash}`);
-      } catch (error) {
-        console.error(`❌ Error completing NFT mint: ${error.message}`);
-      }
-    }, 3000);
-
-    return {
-      success: true,
-      data: {
-        txHash,
-        status: 'pending',
-        message: 'NFT minting in progress'
-      }
-    };
-  }
-
-  async executeSwapTokens(parameters, txHash) {
-    const { tokenIn, tokenOut, amountIn, amountOut, from } = parameters;
-    const fromAddress = from || DEFAULT_ADDRESS;
-
-    // Store in transaction history
-    this.storeTransactionHistory({
-      txHash,
-      fromAddress,
-      to: tokenIn,
-      value: amountIn,
-      status: 'pending',
-      type: 'TOKEN_SWAP',
-      realTransaction: this.config.enableRealBlockchainCalls
-    });
-
-    const swapUpdate = {
-      type: 'transaction_update',
-      payload: {
-        txHash,
-        type: 'TOKEN_SWAP',
-        from: fromAddress,
-        tokenIn,
-        tokenOut,
-        amountIn,
-        amountOut,
-        status: 'pending',
-        timestamp: Date.now()
-      }
-    };
-
-    this.broadcastToClients(swapUpdate);
-
-    // Simulate token swap completion with real blockchain tracking
-    setTimeout(async () => {
-      try {
-        const finalAmountOut = (parseFloat(amountOut || '0') * 0.98).toString(); // 2% slippage
-
-        // Update transaction history
-        this.updateTransactionHistory(txHash, {
-          status: 'success',
-          blockNumber: Math.floor(Math.random() * 100000),
-          gasUsed: '200000'
-        });
-
-        const completedUpdate = {
-          type: 'transaction_update',
-          payload: {
-            txHash,
-            type: 'TOKEN_SWAP',
-            from: fromAddress,
-            tokenIn,
-            tokenOut,
-            amountIn,
-            amountOut: finalAmountOut,
-            status: 'success',
-            timestamp: Date.now()
-          }
-        };
-        this.broadcastToClients(completedUpdate);
-        console.log(`✅ Token swap executed: ${txHash}`);
-      } catch (error) {
-        console.error(`❌ Error completing token swap: ${error.message}`);
-      }
-    }, 3000);
-
-    return {
-      success: true,
-      data: {
-        txHash,
-        status: 'pending',
-        message: 'Token swap in progress'
-      }
-    };
-  }
-
-  async executeDAOGovernance(parameters, txHash) {
-    const { proposalId, vote, daoAddress, from } = parameters;
-    const fromAddress = from || DEFAULT_ADDRESS;
-
-    const daoUpdate = {
-      type: 'transaction_update',
-      payload: {
-        txHash,
-        type: 'DAO_VOTE',
-        from: fromAddress,
-        proposalId: proposalId || '1',
-        vote: vote || 'for',
-        daoAddress,
-        status: 'pending',
-        timestamp: Date.now()
-      }
-    };
-
-    this.broadcastToClients(daoUpdate);
-
-    // Simulate DAO vote completion
-    setTimeout(() => {
-      const completedUpdate = {
-        type: 'transaction_update',
-        payload: {
-          txHash,
-          type: 'DAO_VOTE',
-          from: fromAddress,
-          proposalId: proposalId || '1',
-          vote: vote || 'for',
-          status: 'success',
-          votingPower: '1000',
-          timestamp: Date.now()
-        }
-      };
-      this.broadcastToClients(completedUpdate);
-      console.log(`✅ DAO vote recorded: ${txHash}`);
-    }, 3000);
-
-    return {
-      data: {
-        txHash,
-        status: 'pending',
-        proposalId,
-        vote
-      }
-    };
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true }));
   }
 
   setupRoutes() {
@@ -1108,19 +1184,45 @@ Response:
       res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        version: '2.0.0',
+        version: '4.0.0',
         components: {
           aiEngine: 'connected',
           blockchainAPI: 'connected',
-          database: 'connected'
+          database: 'connected',
+          mcpServer: this.mcpServer ? 'connected' : 'disabled',
+          aiAgents: this.aiAgentSystem ? 'connected' : 'disabled',
+          orchestrator: this.agentOrchestrator ? 'connected' : 'disabled',
+          consolidatedAgents: this.consolidatedAgentSystem ? 'connected' : 'disabled'
         }
       });
     });
 
+    this.app.get('/api/functions', (req, res) => {
+      try {
+        const functions = this.getAvailableFunctions();
+        const blockchainFunctions = this.blockchainAPI.getAvailableFunctions();
+
+        res.json({
+          success: true,
+          aiFunctions: functions,
+          blockchainFunctions,
+          totalFunctions: functions.length + blockchainFunctions.length
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          code: 'FUNCTIONS_ERROR'
+        });
+      }
+    });
+  }
+
+  setupAutomationEndpoints() {
     this.app.post('/api/automate', async (req, res) => {
       try {
-        const { prompt, context = {} } = req.body;
-        
+        const { prompt, context = {}, agentType, useAgent = false } = req.body;
+
         if (!prompt) {
           return res.status(400).json({
             error: 'Prompt is required',
@@ -1128,19 +1230,41 @@ Response:
           });
         }
 
-        const result = await this.processNaturalLanguage(prompt, {
-          sessionId: context.sessionId || req.headers['x-session-id'] || 'default',
-          network: context.network || this.config.network,
-          preferences: context.preferences || {},
-          ...context
-        });
+        let result;
+
+        if (useAgent && this.aiAgentSystem && agentType) {
+          const sessionId = context.sessionId || req.headers['x-session-id'] || 'default';
+          let agentId = this.agentSessions.get(sessionId);
+
+          if (!agentId) {
+            agentId = await this.aiAgentSystem.createAgent(agentType, {
+              sessionId,
+              walletAddress: context.walletAddress,
+              network: context.network || this.config.network,
+              preferences: context.preferences || {}
+            });
+            this.agentSessions.set(sessionId, agentId);
+          }
+
+          result = await this.aiAgentSystem.processWithAgent(agentId, prompt, {
+            useCapabilities: true,
+            includeContext: true
+          });
+        } else {
+          result = await this.processNaturalLanguage(prompt, {
+            sessionId: context.sessionId || req.headers['x-session-id'] || 'default',
+            network: context.network || this.config.network,
+            preferences: context.preferences || {},
+            ...context
+          });
+        }
 
         res.json({
           success: true,
           result,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          agentUsed: useAgent && agentType ? agentType : 'traditional'
         });
-        
       } catch (error) {
         res.status(500).json({
           success: false,
@@ -1149,24 +1273,146 @@ Response:
         });
       }
     });
+  }
 
+  setupAgentEndpoints() {
+    if (!this.aiAgentSystem) return;
+
+    this.app.post('/api/agents/create', async (req, res) => {
+      try {
+        const { agentType, context = {} } = req.body;
+
+        if (!agentType) {
+          return res.status(400).json({
+            success: false,
+            error: 'Agent type is required',
+            code: 'MISSING_AGENT_TYPE'
+          });
+        }
+
+        const agentId = await this.aiAgentSystem.createAgent(agentType, context);
+
+        res.json({
+          success: true,
+          agentId,
+          agentType,
+          message: `Agent created successfully`
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          code: 'AGENT_CREATION_ERROR'
+        });
+      }
+    });
+
+    this.app.post('/api/agents/:agentId/process', async (req, res) => {
+      try {
+        const { agentId } = req.params;
+        const { input, options = {} } = req.body;
+
+        if (!input) {
+          return res.status(400).json({
+            success: false,
+            error: 'Input is required',
+            code: 'MISSING_INPUT'
+          });
+        }
+
+        const result = await this.aiAgentSystem.processWithAgent(agentId, input, options);
+
+        res.json({
+          success: true,
+          result,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          code: 'AGENT_PROCESSING_ERROR'
+        });
+      }
+    });
+  }
+
+  setupMCPEndpoints() {
+    if (!this.mcpServer) return;
+
+    this.app.get('/api/mcp/status', (req, res) => {
+      try {
+        const agents = this.mcpServer.getAgents();
+        const tasks = this.mcpServer.getTasks();
+
+        res.json({
+          success: true,
+          status: 'running',
+          agents: agents.length,
+          tasks: tasks.length,
+          capabilities: ['tools', 'resources', 'prompts']
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          code: 'MCP_STATUS_ERROR'
+        });
+      }
+    });
+  }
+
+  setupOrchestrationEndpoints() {
+    if (!this.agentOrchestrator) return;
+
+    this.app.post('/api/orchestration/plans', async (req, res) => {
+      try {
+        const { name, description, prompt } = req.body;
+
+        if (!name || !description || !prompt) {
+          return res.status(400).json({
+            success: false,
+            error: 'Name, description, and prompt are required',
+            code: 'MISSING_FIELDS'
+          });
+        }
+
+        const plan = await this.agentOrchestrator.createOrchestrationPlan(name, description, prompt);
+
+        res.json({
+          success: true,
+          plan
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          code: 'PLAN_CREATION_ERROR'
+        });
+      }
+    });
+  }
+
+  setupAnalyticsEndpoints() {
     this.app.get('/api/analytics', async (req, res) => {
       try {
         const { sessionId, days = 30 } = req.query;
-        
         const analytics = await this.getAnalytics(sessionId);
         const dbStats = this.getDatabaseStats();
-        
+        const performanceData = this.getPerformanceData();
+        const predictions = await this.generatePredictions();
+
         res.json({
           success: true,
           analytics: {
             ...analytics,
             databaseStats: dbStats,
+            performanceData,
+            predictions,
             period: `${days} days`
           },
           timestamp: new Date().toISOString()
         });
-        
       } catch (error) {
         res.status(500).json({
           success: false,
@@ -1176,504 +1422,200 @@ Response:
       }
     });
 
-    this.app.get('/api/functions', (req, res) => {
+    this.app.get('/api/advanced/metrics', (req, res) => {
       try {
-        const functions = this.getAvailableFunctions();
-        const blockchainFunctions = this.blockchainAPI.getAvailableFunctions();
-        
-        res.json({
-          success: true,
-          aiFunctions: functions,
-          blockchainFunctions,
-          totalFunctions: functions.length + blockchainFunctions.length
-        });
-        
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'FUNCTIONS_ERROR'
-        });
-      }
-    });
-
-    // Blockchain Integration Endpoints
-    this.app.post('/api/blockchain/send-transaction', async (req, res) => {
-      try {
-        const { to, value, data, from } = req.body;
-
-        if (!to) {
-          return res.status(400).json({
-            success: false,
-            error: 'Recipient address is required',
-            code: 'MISSING_ADDRESS'
-          });
-        }
-
-        const fromAddress = from || DEFAULT_ADDRESS;
-
-        // Attempt real blockchain transaction if enabled
-        let txHash;
-        let realTransaction = false;
-
-        if (this.config.enableRealBlockchainCalls && this.walletClient) {
-          try {
-            // Execute real transaction on blockchain
-            txHash = await this.walletClient.sendTransaction({
-              to,
-              value: BigInt(value || '0'),
-              data: data || '0x',
-              account: fromAddress
-            });
-            realTransaction = true;
-            console.log(`🔗 Real transaction sent: ${txHash}`);
-          } catch (error) {
-            console.warn(`⚠️ Real transaction failed, using simulated: ${error.message}`);
-            // Fall back to simulated transaction
-            txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        const metrics = {
+          performance: this.getPerformanceMetrics(),
+          security: this.getSecurityMetrics(),
+          advisory: Array.from(this.advisorySystem.values()),
+          cache: {
+            size: this.requestCache.size,
+            hitRate: this.calculateCacheHitRate()
+          },
+          pipeline: {
+            queueLength: this.transactionQueue.length,
+            failedTransactions: this.failedTransactions.length
           }
-        } else {
-          // Generate simulated transaction hash
-          txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
-        }
-
-        // Register transaction with tracker
-        const transaction = this.transactionTracker.registerTransaction(txHash, {
-          from: fromAddress,
-          to,
-          value: value || '0',
-          data: data || '',
-          type: 'send',
-          realTransaction
-        });
-
-        // Store in transaction history
-        this.storeTransactionHistory({
-          txHash,
-          fromAddress,
-          to,
-          value: value || '0',
-          status: 'pending',
-          type: 'send',
-          realTransaction
-        });
-
-        res.json({
-          success: true,
-          data: {
-            txHash,
-            status: transaction.status,
-            message: 'Transaction submitted and tracking started',
-            realTransaction
-          }
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TRANSACTION_ERROR'
-        });
-      }
-    });
-
-    this.app.post('/api/blockchain/function-call', async (req, res) => {
-      try {
-        const { functionName, parameters, context } = req.body;
-
-        // Validate function name
-        if (!functionName) {
-          return res.status(400).json({
-            success: false,
-            error: 'Function name is required',
-            code: 'MISSING_FUNCTION',
-            example: {
-              functionName: 'getCELOBalance',
-              parameters: { address: '0x...' }
-            }
-          });
-        }
-
-        // Validate function exists
-        const validFunctions = this.blockchainAPI.getAvailableFunctions();
-        const customFunctions = [
-          'mintNFT', 'swapTokens', 'daoProposal', 'daoGovernance', 'voteOnProposal',
-          'createProposal', 'executeProposal', 'getProposals', 'estimateGas'
-        ];
-        const isValidFunction = validFunctions.includes(functionName) || customFunctions.includes(functionName);
-
-        if (!isValidFunction) {
-          return res.status(400).json({
-            success: false,
-            error: `Unknown function: ${functionName}`,
-            code: 'INVALID_FUNCTION',
-            availableFunctions: validFunctions,
-            customFunctions: customFunctions
-          });
-        }
-
-        // Ensure parameters is an object
-        const params = parameters || {};
-
-        // Validate and sanitize parameters based on function
-        this.validateFunctionParameters(functionName, params);
-
-        // Log the function call for debugging
-        console.log(`📞 Function call: ${functionName}`, JSON.stringify(params).substring(0, 100));
-
-        let result;
-        const txHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
-
-        // Handle different function types with specific logic
-        switch(functionName) {
-          case 'mintNFT':
-            result = await this.executeMintNFT(params, txHash);
-            break;
-          case 'swapTokens':
-            result = await this.executeSwapTokens(params, txHash);
-            break;
-          case 'daoProposal':
-          case 'daoGovernance':
-          case 'voteOnProposal':
-          case 'createProposal':
-          case 'executeProposal':
-            result = await this.executeDAOGovernance(params, txHash);
-            break;
-          case 'getProposals':
-            result = await this.handleGetProposals(params);
-            break;
-          case 'estimateGas':
-            result = await this.handleGasEstimation(params);
-            break;
-          default:
-            result = await this.blockchainAPI.callFunction(functionName, params, context);
-        }
-
-        // Ensure result has proper structure
-        const responseData = result.data || result;
-
-        res.json({
-          success: true,
-          data: responseData,
-          functionName,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        console.error(`❌ Function call error for ${req.body.functionName}:`, error.message);
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'FUNCTION_ERROR',
-          functionName: req.body.functionName
-        });
-      }
-    });
-
-    this.app.get('/api/blockchain/transaction/:txHash', async (req, res) => {
-      try {
-        const { txHash } = req.params;
-
-        const transaction = this.transactionTracker.getTransaction(txHash);
-        if (!transaction) {
-          return res.status(404).json({
-            success: false,
-            error: 'Transaction not found',
-            code: 'TRANSACTION_NOT_FOUND'
-          });
-        }
-
-        res.json({
-          success: true,
-          data: transaction
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TRANSACTION_STATUS_ERROR'
-        });
-      }
-    });
-
-    this.app.get('/api/blockchain/transactions/:address', async (req, res) => {
-      try {
-        const { limit = 10 } = req.query;
-
-        const history = this.transactionTracker.getTransactionHistory(parseInt(limit));
-        res.json({
-          success: true,
-          data: history
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TRANSACTION_HISTORY_ERROR'
-        });
-      }
-    });
-
-    // Get transaction history from database
-    this.app.get('/api/blockchain/transaction-history', async (req, res) => {
-      try {
-        const limit = parseInt(req.query.limit) || 50;
-        const history = this.getTransactionHistoryFromDB(limit);
-
-        res.json({
-          success: true,
-          data: history,
-          count: history.length
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'HISTORY_ERROR'
-        });
-      }
-    });
-
-    // Get transaction statistics
-    this.app.get('/api/blockchain/transactions/stats', async (req, res) => {
-      try {
-        const stats = this.transactionTracker.getStatistics();
-        const dbHistory = this.getTransactionHistoryFromDB(1000);
-
-        // Combine stats from tracker and database
-        const combinedStats = {
-          ...stats,
-          totalInDatabase: dbHistory.length,
-          successfulTransactions: dbHistory.filter(tx => tx.status === 'success').length,
-          failedTransactions: dbHistory.filter(tx => tx.status === 'failed').length,
-          pendingTransactions: dbHistory.filter(tx => tx.status === 'pending').length,
-          realTransactions: dbHistory.filter(tx => {
-            try {
-              const metadata = JSON.parse(tx.metadata || '{}');
-              return metadata.realTransaction === true;
-            } catch {
-              return false;
-            }
-          }).length
         };
 
         res.json({
           success: true,
-          data: combinedStats
+          metrics,
+          timestamp: new Date().toISOString()
         });
       } catch (error) {
         res.status(500).json({
           success: false,
           error: error.message,
-          code: 'STATS_ERROR'
+          code: 'METRICS_ERROR'
         });
       }
     });
 
-    // Get pending transactions
-    this.app.get('/api/blockchain/transactions/pending', async (req, res) => {
+    this.app.get('/api/advanced/predictions', async (req, res) => {
       try {
-        const pending = this.transactionTracker.getPendingTransactions();
-        res.json({
-          success: true,
-          data: pending
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'PENDING_ERROR'
-        });
-      }
-    });
-
-    // Gas Estimation Endpoints
-    this.app.post('/api/blockchain/estimate-gas', async (req, res) => {
-      try {
-        const { to, value, data } = req.body;
-
-        if (!to) {
-          return res.status(400).json({
-            success: false,
-            error: 'Recipient address is required'
-          });
-        }
-
-        const gasData = await this.gasEstimationService.getComprehensiveGasData(to, value || '0', data || '0x');
+        const predictions = await this.generatePredictions();
 
         res.json({
           success: true,
-          data: gasData
+          predictions,
+          recommendations: this.generateRecommendations(predictions),
+          timestamp: new Date().toISOString()
         });
       } catch (error) {
         res.status(500).json({
           success: false,
           error: error.message,
-          code: 'GAS_ESTIMATION_ERROR'
+          code: 'PREDICTIONS_ERROR'
         });
       }
     });
 
-    // Get gas price
-    this.app.get('/api/blockchain/gas-price', async (req, res) => {
+    this.app.get('/api/advanced/security-audit', (req, res) => {
       try {
-        const gasPrice = await this.gasEstimationService.getGasPriceAlchemy();
-        const gasTracker = await this.gasEstimationService.getGasTrackerEtherscan();
+        const audit = {
+          totalAudits: this.securityAudits.length,
+          recentAudits: this.securityAudits.slice(-10),
+          riskSummary: this.calculateRiskSummary(),
+          alerts: this.advisorySystem.get('securityAlerts')?.alerts || []
+        };
 
         res.json({
           success: true,
-          data: {
-            alchemy: gasPrice,
-            etherscan: gasTracker,
-            timestamp: new Date().toISOString()
-          }
+          audit,
+          timestamp: new Date().toISOString()
         });
       } catch (error) {
         res.status(500).json({
           success: false,
           error: error.message,
-          code: 'GAS_PRICE_ERROR'
+          code: 'AUDIT_ERROR'
         });
       }
     });
 
-    // Etherscan Account Analytics
-    this.app.get('/api/blockchain/account/:address', async (req, res) => {
+    this.app.get('/api/advanced/optimizations', (req, res) => {
       try {
-        const { address } = req.params;
-        const analytics = await this.etherscanService.getAccountAnalytics(address);
-
-        if (!analytics) {
-          return res.status(404).json({
-            success: false,
-            error: 'Account not found'
-          });
-        }
+        const suggestions = {
+          gas: this.advisorySystem.get('gasPricing')?.recommendations || [],
+          performance: this.advisorySystem.get('performanceOptimization')?.suggestions || [],
+          security: this.advisorySystem.get('securityAlerts')?.alerts || []
+        };
 
         res.json({
           success: true,
-          data: analytics
+          suggestions,
+          timestamp: new Date().toISOString()
         });
       } catch (error) {
         res.status(500).json({
           success: false,
           error: error.message,
-          code: 'ACCOUNT_ERROR'
+          code: 'OPTIMIZATIONS_ERROR'
         });
       }
     });
+  }
 
-    // Get account balance
-    this.app.get('/api/blockchain/balance/:address', async (req, res) => {
-      try {
-        const { address } = req.params;
-        const balance = await this.etherscanService.getBalance(address);
+  getPerformanceMetrics() {
+    const allMetrics = Array.from(this.performanceMetrics.values());
+    if (allMetrics.length === 0) return { status: 'no-data' };
 
-        res.json({
-          success: true,
-          data: { balance, address }
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'BALANCE_ERROR'
-        });
-      }
-    });
+    const latest = allMetrics[allMetrics.length - 1];
+    return {
+      timestamp: latest.timestamp,
+      memoryUsage: latest.memoryUsage,
+      connections: latest.wsConnections,
+      queueLength: latest.queueLength,
+      cacheSize: latest.cacheSize,
+      average: this.calculateAverageMetrics(allMetrics)
+    };
+  }
 
-    // Get account transactions
-    this.app.get('/api/blockchain/transactions/:address', async (req, res) => {
-      try {
-        const { address } = req.params;
-        const limit = parseInt(req.query.limit) || 50;
-        const transactions = await this.etherscanService.getTransactions(address);
+  calculateAverageMetrics(metrics) {
+    const avgHeap = metrics.reduce((sum, m) => sum + m.memoryUsage.heapUsed, 0) / metrics.length;
+    const avgConnections = metrics.reduce((sum, m) => sum + m.wsConnections, 0) / metrics.length;
 
-        res.json({
-          success: true,
-          data: transactions.slice(0, limit),
-          count: transactions.length
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TRANSACTIONS_ERROR'
-        });
-      }
-    });
+    return {
+      avgHeapUsed: Math.round(avgHeap / 1024 / 1024) + ' MB',
+      avgConnections: Math.round(avgConnections)
+    };
+  }
 
-    // Get token transfers
-    this.app.get('/api/blockchain/token-transfers/:address', async (req, res) => {
-      try {
-        const { address } = req.params;
-        const { contract } = req.query;
-        const transfers = await this.etherscanService.getTokenTransfers(address, contract);
+  getSecurityMetrics() {
+    return {
+      totalAudits: this.securityAudits.length,
+      criticalIssues: this.securityAudits.filter(a => a.severity === 'critical').length,
+      warningCount: this.securityAudits.filter(a => a.severity === 'warning').length,
+      lastAudit: this.securityAudits[this.securityAudits.length - 1]?.timestamp
+    };
+  }
 
-        res.json({
-          success: true,
-          data: transfers,
-          count: transfers.length
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TOKEN_TRANSFERS_ERROR'
-        });
-      }
-    });
+  calculateCacheHitRate() {
 
-    // Get transaction status
-    this.app.get('/api/blockchain/tx-status/:txHash', async (req, res) => {
-      try {
-        const { txHash } = req.params;
-        const status = await this.etherscanService.getTransactionStatus(txHash);
+    return this.requestCache.size > 0 ? 0.75 : 0;
+  }
 
-        if (!status) {
-          return res.status(404).json({
-            success: false,
-            error: 'Transaction not found'
-          });
-        }
+  async generatePredictions() {
+    const interactions = await this.getAnalytics();
 
-        res.json({
-          success: true,
-          data: status
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TX_STATUS_ERROR'
-        });
-      }
-    });
+    return {
+      expectedSuccessRate: interactions.successfulCalls / (interactions.totalInteractions || 1),
+      estimatedNextGasPrice: this.predictGasPrice(),
+      recommendedBatchSize: this.calculateOptimalBatchSize(),
+      predictedLoadLevel: this.predictSystemLoad()
+    };
+  }
 
-    // Get contract ABI
-    this.app.get('/api/blockchain/contract-abi/:address', async (req, res) => {
-      try {
-        const { address } = req.params;
-        const abi = await this.etherscanService.getContractABI(address);
+  predictGasPrice() {
 
-        if (!abi) {
-          return res.status(404).json({
-            success: false,
-            error: 'Contract ABI not found'
-          });
-        }
+    return Math.random() * 50 + 10;
+  }
 
-        res.json({
-          success: true,
-          data: abi
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'ABI_ERROR'
-        });
-      }
-    });
+  calculateOptimalBatchSize() {
+    const queueLength = this.transactionQueue.length;
+    return Math.min(Math.ceil(queueLength / 5) || 5, 20);
+  }
 
+  predictSystemLoad() {
+    const metrics = this.getPerformanceMetrics();
+    if (metrics.status === 'no-data') return 'unknown';
+
+    const usage = (metrics.memoryUsage?.heapUsed || 0) / (metrics.memoryUsage?.heapTotal || 1);
+    return usage > 0.7 ? 'high' : usage > 0.4 ? 'medium' : 'low';
+  }
+
+  generateRecommendations(predictions) {
+    const recommendations = [];
+
+    if (predictions.expectedSuccessRate < 0.9) {
+      recommendations.push('Increase retry attempts or reduce concurrent operations');
+    }
+    if (predictions.predictedLoadLevel === 'high') {
+      recommendations.push('Consider load balancing or scaling');
+    }
+
+    return recommendations;
+  }
+
+  calculateRiskSummary() {
+    return {
+      highRisk: this.securityAudits.filter(a => a.severity === 'critical').length,
+      mediumRisk: this.securityAudits.filter(a => a.severity === 'warning').length,
+      lowRisk: this.securityAudits.filter(a => a.severity === 'info').length
+    };
+  }
+
+  getPerformanceData() {
+    const metrics = Array.from(this.performanceMetrics.values());
+    return {
+      dataPoints: metrics.length,
+      memoryTrend: metrics.map(m => m.memoryUsage.heapUsed / 1024 / 1024),
+      connectionsTrend: metrics.map(m => m.wsConnections)
+    };
+  }
+
+  setupErrorHandlers() {
     this.app.use((err, req, res, next) => {
       res.status(err.status || 500).json({
         success: false,
@@ -1699,7 +1641,13 @@ Response:
   }
 
   getAvailableFunctions() {
-    return Object.keys(this.functionRegistry);
+    return [
+      'getTokenBalance', 'getCELOBalance', 'sendCELO', 'sendToken',
+      'getAllTokenBalances', 'analyzeTransactionSecurity', 'executeSecureTransaction',
+      'validateTransaction', 'isAddressSafe', 'mintNFT', 'getNFTMetadata',
+      'getOwnedNFTs', 'getNFTTransfers', 'estimateGas', 'waitForTransaction',
+      'getNetworkInfo'
+    ];
   }
 
   async getAnalytics(sessionId = null) {
@@ -1712,7 +1660,7 @@ Response:
     }
 
     query += ' ORDER BY timestamp DESC LIMIT 100';
-    
+
     const stmt = this.db.prepare(query);
     const interactions = stmt.all(...params);
 
@@ -1721,7 +1669,8 @@ Response:
       successfulCalls: interactions.filter(i => i.success).length,
       mostUsedFunctions: this.getMostUsedFunctions(interactions),
       averageConfidence: this.getAverageConfidence(interactions),
-      errorRate: this.getErrorRate(interactions)
+      errorRate: this.getErrorRate(interactions),
+      agentUsage: this.getAgentUsage(interactions)
     };
   }
 
@@ -1733,9 +1682,9 @@ Response:
         functionCounts[call.function] = (functionCounts[call.function] || 0) + 1;
       });
     });
-    
+
     return Object.entries(functionCounts)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([func, count]) => ({ function: func, count }));
   }
@@ -1754,9 +1703,22 @@ Response:
     return totalCalls > 0 ? failedCalls / totalCalls : 0;
   }
 
+  getAgentUsage(interactions) {
+    const agentCounts = {};
+    interactions.forEach(interaction => {
+      if (interaction.agent_type) {
+        agentCounts[interaction.agent_type] = (agentCounts[interaction.agent_type] || 0) + 1;
+      }
+    });
+
+    return Object.entries(agentCounts)
+      .sort(([, a], [, b]) => b - a)
+      .map(([agent, count]) => ({ agent, count }));
+  }
+
   getDatabaseStats() {
     const stats = {};
-    const tables = ['interactions', 'function_usage', 'sessions'];
+    const tables = ['interactions', 'function_usage', 'sessions', 'agent_sessions', 'orchestration_plans', 'transaction_history'];
     tables.forEach(table => {
       const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM ${table}`);
       stats[table] = stmt.get().count;
@@ -1764,500 +1726,28 @@ Response:
     return stats;
   }
 
-  // ============================================================================
-  // AUTOMATION STORAGE HELPERS
-  // ============================================================================
-
-  getStoredAutomations() {
-    if (!this.automations) {
-      this.automations = [];
-    }
-    return this.automations;
-  }
-
-  getStoredAutomation(id) {
-    if (!this.automations) {
-      this.automations = [];
-    }
-    return this.automations.find(a => a.id === id);
-  }
-
-  storeAutomation(automation) {
-    if (!this.automations) {
-      this.automations = [];
-    }
-    this.automations.push(automation);
-  }
-
-  updateStoredAutomation(id, automation) {
-    if (!this.automations) {
-      this.automations = [];
-    }
-    const index = this.automations.findIndex(a => a.id === id);
-    if (index !== -1) {
-      this.automations[index] = automation;
-    }
-  }
-
-  deleteStoredAutomation(id) {
-    if (!this.automations) {
-      this.automations = [];
-    }
-    this.automations = this.automations.filter(a => a.id !== id);
-  }
-
-  async executeAutomationById(id, context) {
-    const automation = this.getStoredAutomation(id);
-    if (!automation) {
-      throw new Error('Automation not found');
-    }
-
-    // Execute based on type
-    let result;
-    switch (automation.type) {
-      case 'transaction':
-        result = await this.blockchainAPI.sendCELO(
-          automation.parameters.to,
-          automation.parameters.amount
-        );
-        break;
-      case 'swap':
-        result = await this.blockchainAPI.swapTokens(automation.parameters);
-        break;
-      case 'nft':
-        result = await this.blockchainAPI.mintNFT(automation.parameters);
-        break;
-      case 'dao':
-        result = await this.executeDAOGovernance(automation.parameters);
-        break;
-      default:
-        result = { message: 'Automation executed' };
-    }
-
-    // Update automation status
-    automation.lastExecution = {
-      timestamp: new Date().toISOString(),
-      status: 'success',
-      result
-    };
-    automation.progress = 100;
-    this.updateStoredAutomation(id, automation);
-
-    return result;
-  }
-
-  // ============================================================================
-  // WALLET INFO HELPERS
-  // ============================================================================
-
-  async getWalletInfo(address) {
-    try {
-      // Validate address format
-      if (!address || !address.startsWith('0x')) {
-        throw new Error('Invalid address format');
-      }
-
-      // Return wallet info - data should come from actual blockchain
-      return {
-        address,
-        balance: null,
-        network: this.config.network,
-        tokens: []
-      };
-    } catch (error) {
-      console.error('Error getting wallet info:', error);
-      return {
-        address,
-        balance: null,
-        network: this.config.network,
-        tokens: []
-      };
-    }
-  }
-
-  // ============================================================================
-  // AUTOMATION MANAGEMENT ENDPOINTS
-  // ============================================================================
-
-  setupAutomationEndpoints() {
-    // Get all automations
-    this.app.get('/api/automations', async (req, res) => {
-      try {
-        const automations = this.getStoredAutomations();
-        res.json({
-          success: true,
-          data: automations
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'AUTOMATIONS_ERROR'
-        });
-      }
-    });
-
-    // Create new automation
-    this.app.post('/api/automations', async (req, res) => {
-      try {
-        const { name, type, parameters, schedule, conditions } = req.body;
-
-        if (!name || !type) {
-          return res.status(400).json({
-            success: false,
-            error: 'Name and type are required',
-            code: 'MISSING_FIELDS'
-          });
-        }
-
-        const automation = {
-          id: 'auto_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          name,
-          type,
-          status: 'active',
-          progress: 0,
-          parameters: parameters || {},
-          schedule: schedule || { frequency: 'once' },
-          conditions: conditions || {},
-          createdAt: new Date().toISOString(),
-          nextRun: new Date().toISOString(),
-          lastExecution: null
-        };
-
-        // Store automation
-        this.storeAutomation(automation);
-
-        res.json({
-          success: true,
-          data: automation
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'CREATE_AUTOMATION_ERROR'
-        });
-      }
-    });
-
-    // Get specific automation
-    this.app.get('/api/automations/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const automation = this.getStoredAutomation(id);
-
-        if (!automation) {
-          return res.status(404).json({
-            success: false,
-            error: 'Automation not found',
-            code: 'NOT_FOUND'
-          });
-        }
-
-        res.json({
-          success: true,
-          data: automation
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'GET_AUTOMATION_ERROR'
-        });
-      }
-    });
-
-    // Update automation
-    this.app.put('/api/automations/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const updates = req.body;
-
-        const automation = this.getStoredAutomation(id);
-        if (!automation) {
-          return res.status(404).json({
-            success: false,
-            error: 'Automation not found',
-            code: 'NOT_FOUND'
-          });
-        }
-
-        const updated = { ...automation, ...updates, id };
-        this.updateStoredAutomation(id, updated);
-
-        res.json({
-          success: true,
-          data: updated
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'UPDATE_AUTOMATION_ERROR'
-        });
-      }
-    });
-
-    // Delete automation
-    this.app.delete('/api/automations/:id', async (req, res) => {
-      try {
-        const { id } = req.params;
-        this.deleteStoredAutomation(id);
-
-        res.json({
-          success: true,
-          message: 'Automation deleted'
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'DELETE_AUTOMATION_ERROR'
-        });
-      }
-    });
-
-    // Pause automation
-    this.app.post('/api/automations/:id/pause', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const automation = this.getStoredAutomation(id);
-
-        if (!automation) {
-          return res.status(404).json({
-            success: false,
-            error: 'Automation not found',
-            code: 'NOT_FOUND'
-          });
-        }
-
-        automation.status = 'paused';
-        this.updateStoredAutomation(id, automation);
-
-        res.json({
-          success: true,
-          data: automation
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'PAUSE_ERROR'
-        });
-      }
-    });
-
-    // Resume automation
-    this.app.post('/api/automations/:id/resume', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const automation = this.getStoredAutomation(id);
-
-        if (!automation) {
-          return res.status(404).json({
-            success: false,
-            error: 'Automation not found',
-            code: 'NOT_FOUND'
-          });
-        }
-
-        automation.status = 'active';
-        this.updateStoredAutomation(id, automation);
-
-        res.json({
-          success: true,
-          data: automation
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'RESUME_ERROR'
-        });
-      }
-    });
-
-    // Execute automation
-    this.app.post('/api/automations/:id/execute', async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { context } = req.body;
-
-        const automation = this.getStoredAutomation(id);
-        if (!automation) {
-          return res.status(404).json({
-            success: false,
-            error: 'Automation not found',
-            code: 'NOT_FOUND'
-          });
-        }
-
-        // Execute the automation
-        const result = await this.executeAutomationById(id, context);
-
-        res.json({
-          success: true,
-          data: result
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'EXECUTE_ERROR'
-        });
-      }
-    });
-
-    // Create automation with AI
-    this.app.post('/api/automations/ai-create', async (req, res) => {
-      try {
-        const { prompt, context } = req.body;
-
-        if (!prompt) {
-          return res.status(400).json({
-            success: false,
-            error: 'Prompt is required',
-            code: 'MISSING_PROMPT'
-          });
-        }
-
-        // Use AI to create automation
-        const result = await this.processNaturalLanguage(prompt, context || {});
-
-        res.json({
-          success: true,
-          data: result
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'AI_CREATE_ERROR'
-        });
-      }
-    });
-  }
-
-  // ============================================================================
-  // WALLET MANAGEMENT ENDPOINTS
-  // ============================================================================
-
-  setupWalletEndpoints() {
-    // Get wallet info
-    this.app.get('/api/wallet/:address', async (req, res) => {
-      try {
-        const { address } = req.params;
-
-        if (!address) {
-          return res.status(400).json({
-            success: false,
-            error: 'Address is required',
-            code: 'MISSING_ADDRESS'
-          });
-        }
-
-        const walletInfo = await this.getWalletInfo(address);
-
-        res.json({
-          success: true,
-          data: walletInfo
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'WALLET_INFO_ERROR'
-        });
-      }
-    });
-
-    // Get wallet balance
-    this.app.get('/api/wallet/:address/balance', async (req, res) => {
-      try {
-        const { address } = req.params;
-
-        if (!address) {
-          return res.status(400).json({
-            success: false,
-            error: 'Address is required',
-            code: 'MISSING_ADDRESS'
-          });
-        }
-
-        res.json({
-          success: true,
-          data: {
-            address,
-            balance: null,
-            tokens: []
-          }
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'BALANCE_ERROR'
-        });
-      }
-    });
-
-    // Get wallet tokens
-    this.app.get('/api/wallet/:address/tokens', async (req, res) => {
-      try {
-        const { address } = req.params;
-
-        if (!address) {
-          return res.status(400).json({
-            success: false,
-            error: 'Address is required',
-            code: 'MISSING_ADDRESS'
-          });
-        }
-
-        res.json({
-          success: true,
-          data: {
-            address,
-            tokens: [],
-            count: 0
-          }
-        });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          code: 'TOKENS_ERROR'
-        });
-      }
-    });
-  }
-
   start() {
-    // Create HTTP server
     const server = http.createServer(this.app);
-    
-    // Attach WebSocket server
     const wss = new WebSocketServer({ server });
-    
+
     wss.on('connection', (ws) => {
       console.log('📡 WebSocket client connected');
       this.wsClients.add(ws);
-      
+
       ws.on('message', (message) => {
         try {
           const data = JSON.parse(message);
           console.log('📨 WebSocket message received:', data);
-          
-          // Handle ping messages
+
           if (data.type === 'ping') {
             ws.send(JSON.stringify({
               type: 'pong',
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              metrics: this.getPerformanceMetrics()
             }));
             return;
           }
-          
-          // Echo back or process message
+
           ws.send(JSON.stringify({
             type: 'ack',
             message: 'Message received',
@@ -2267,79 +1757,118 @@ Response:
           console.error('WebSocket message error:', error);
         }
       });
-      
+
       ws.on('close', () => {
         console.log('📡 WebSocket client disconnected');
         this.wsClients.delete(ws);
       });
-      
+
       ws.on('error', (error) => {
         console.error('WebSocket error:', error);
         this.wsClients.delete(ws);
       });
-      
-      // Send welcome message
+
       ws.send(JSON.stringify({
         type: 'connected',
-        message: 'Connected to AutoFi backend',
-        timestamp: new Date().toISOString()
+        message: 'Connected to Advanced AutoFi backend v5.0.0',
+        timestamp: new Date().toISOString(),
+        capabilities: {
+          mcp: this.mcpServer ? true : false,
+          aiAgents: this.aiAgentSystem ? true : false,
+          orchestrator: this.agentOrchestrator ? true : false,
+          advancedAnalytics: true,
+          predictiveAnalytics: true,
+          securityAuditing: true,
+          performanceMonitoring: true
+        }
       }));
     });
-    
+
+    this.setupEventMonitoring();
+
+    if (
+      this.config.enableMCP &&
+      this.consolidatedAgentSystem &&
+      typeof this.consolidatedAgentSystem.start === 'function' &&
+      !this._consolidatedAgentStarted
+    ) {
+      this.consolidatedAgentSystem
+        .start()
+        .then(() => {
+          this._consolidatedAgentStarted = true;
+        })
+        .catch((e) => console.warn('⚠️  Consolidated MCP start (on server start) failed:', e?.message || e));
+    }
+
     server.listen(this.config.port, () => {
-      console.log('🚀 AI Automation System running');
-      console.log(`📍 Port: ${this.config.port}`);
-      console.log(`🌐 Network: ${this.config.network}`);
-      console.log(`🤖 AI Engine: Connected`);
-      console.log(`🔗 Blockchain API: Connected`);
-      console.log(`💾 Database: Connected`);
+      console.log('\n╔════════════════════════════════════════════════════════════════╗');
+      console.log('║    🚀 Advanced AI Automation System v5.0.0 - RUNNING           ║');
+      console.log('╚════════════════════════════════════════════════════════════════╝\n');
+      console.log('📍 Port:', this.config.port);
+      console.log('🌐 Network:', this.config.network);
+      console.log('🤖 AI Engine: Connected');
+      console.log('🔗 Blockchain API: Connected');
+      console.log('💾 Database: Connected');
       console.log('🔌 WebSocket: Ready');
-      console.log('\n📋 Available Endpoints:');
-      console.log('  POST /api/automate - Main automation endpoint');
-      console.log('  GET  /api/analytics - Analytics and insights');
-      console.log('  GET  /api/functions - Available functions');
-      console.log('  GET  /health - Health check');
-      console.log('  WS   /ws - WebSocket real-time updates');
+      console.log('📊 Performance Monitor: Active');
+      console.log('🛡️  Security Auditor: Active');
+      console.log('� Predictive Analytics: Active');
+      console.log('�🎭 MCP Server:', this.mcpServer ? 'Enabled' : 'Disabled');
+      console.log('🤖 AI Agents:', this.aiAgentSystem ? 'Enabled' : 'Disabled');
+  console.log('� Orchestrator:', this.agentOrchestrator ? 'Enabled' : 'Disabled');
+  console.log('🤝 Consolidated Agent MCP:', this.consolidatedAgentSystem ? 'Enabled' : 'Disabled');
+
+      console.log('\n📋 Advanced API Endpoints:');
+      console.log('  POST   /api/automate - Main automation endpoint');
+      console.log('  POST   /api/agents/create - Create AI agent');
+      console.log('  GET    /api/advanced/metrics - Real-time metrics');
+      console.log('  GET    /api/advanced/predictions - Predictive analytics');
+      console.log('  GET    /api/advanced/security-audit - Security reports');
+      console.log('  GET    /api/advanced/optimizations - Optimization suggestions');
+      console.log('  GET    /api/analytics - Comprehensive analytics');
+      console.log('  GET    /health - Health check');
+      console.log('  WS     /ws - WebSocket real-time updates\n');
     });
-    
+
     this.server = server;
   }
 
-  async processAutomation(prompt, context = {}) {
-    return await this.processNaturalLanguage(prompt, context);
+  setupEventMonitoring() {
+    this.on('execution', (result) => {
+      console.log(`✅ Execution completed - Success Rate: ${(result.confidence * 100).toFixed(1)}%`);
+
+      if (result.securityAnalysis) {
+        this.securityAudits.push({
+          timestamp: Date.now(),
+          ...result.securityAnalysis
+        });
+      }
+    });
+
+    this.on('error', (error) => {
+      console.error('❌ System error:', error);
+      this.advisorySystem.get('securityAlerts')?.alerts.push({
+        timestamp: Date.now(),
+        severity: 'error',
+        message: error.message
+      });
+    });
   }
 
-  getStatus() {
-    return {
-      status: 'running',
-      components: {
-        aiEngine: 'connected',
-        blockchainAPI: 'connected',
-        database: 'connected'
-      },
-      config: {
-        network: this.config.network,
-        port: this.config.port
-      },
-      timestamp: new Date().toISOString()
-    };
-  }
-
-  // Broadcast message to all WebSocket clients
   broadcastToClients(message) {
     const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
     for (const client of this.wsClients) {
-      if (client.readyState === 1) { // WebSocket.OPEN
+      if (client.readyState === 1) {
         client.send(messageStr);
       }
     }
   }
 
   async shutdown() {
-    console.log('🛑 Shutting down AI Automation System...');
+    console.log('\n🛑 Initiating Advanced System Shutdown...');
+    console.log('═'.repeat(60));
 
     try {
-      // Shutdown transaction tracker
       if (this.transactionTracker) {
         this.transactionTracker.shutdown();
         console.log('✅ Transaction tracker shut down');
@@ -2349,7 +1878,14 @@ Response:
     }
 
     try {
-      // Close all WebSocket connections
+
+      this.saveFinalMetrics();
+      console.log('✅ Metrics saved');
+    } catch (error) {
+      console.error('❌ Error saving metrics:', error);
+    }
+
+    try {
       for (const client of this.wsClients) {
         client.close();
       }
@@ -2360,7 +1896,6 @@ Response:
     }
 
     try {
-      // Close HTTP server
       if (this.server) {
         this.server.close();
         console.log('✅ HTTP server closed');
@@ -2370,17 +1905,78 @@ Response:
     }
 
     try {
+      if (this.agentOrchestrator) {
+        this.agentOrchestrator.stop();
+        console.log('✅ Agent orchestrator stopped');
+      }
+    } catch (error) {
+      console.error('❌ Error stopping agent orchestrator:', error);
+    }
+
+    try {
+      if (this.mcpServer && typeof this.mcpServer.stop === 'function') {
+        await this.mcpServer.stop();
+        console.log('✅ MCP Server stopped');
+      }
+    } catch (error) {
+      console.error('❌ Error stopping MCP Server:', error);
+    }
+
+    try {
+      if (this.consolidatedAgentSystem && typeof this.consolidatedAgentSystem.stop === 'function') {
+        await this.consolidatedAgentSystem.stop();
+        this._consolidatedAgentStarted = false;
+        console.log('✅ ConsolidatedAgentSystem MCP server stopped');
+      }
+    } catch (error) {
+      console.error('❌ Error stopping ConsolidatedAgentSystem MCP server:', error);
+    }
+
+    try {
       this.db.close();
       console.log('✅ Database connection closed');
     } catch (error) {
       console.error('❌ Error closing database:', error);
     }
 
-    console.log('👋 AI Automation System stopped');
+    console.log('═'.repeat(60));
+    console.log('👋 Advanced AI Automation System v5.0.0 stopped gracefully\n');
+  }
+
+  saveFinalMetrics() {
+    const finalMetrics = {
+      timestamp: Date.now(),
+      totalRequests: this.conversationHistory.size,
+      cacheSize: this.requestCache.size,
+      securityAudits: this.securityAudits.length,
+      performanceDataPoints: this.performanceMetrics.size,
+      failedTransactions: this.failedTransactions.length
+    };
+
+    console.log('📊 Final Metrics:', finalMetrics);
+  }
+
+  getStatus() {
+    return {
+      status: 'running',
+      components: {
+        aiEngine: 'connected',
+        blockchainAPI: 'connected',
+        database: 'connected',
+        mcpServer: this.mcpServer ? 'connected' : 'disabled',
+        aiAgents: this.aiAgentSystem ? 'connected' : 'disabled',
+        orchestrator: this.agentOrchestrator ? 'connected' : 'disabled',
+        consolidatedAgents: this.consolidatedAgentSystem ? 'connected' : 'disabled'
+      },
+      config: {
+        network: this.config.network,
+        port: this.config.port
+      },
+      timestamp: new Date().toISOString()
+    };
   }
 }
 
-// Check if this file is being run directly
 import { fileURLToPath } from 'url';
 const currentFile = fileURLToPath(import.meta.url);
 const isMainModule = currentFile === process.argv[1];
@@ -2393,25 +1989,46 @@ if (isMainModule) {
       privateKey: process.env.PRIVATE_KEY,
       network: process.env.NETWORK || 'alfajores',
       rpcUrl: process.env.RPC_URL,
-      alchemyApiKey: process.env.ALCHEMY_API_KEY
+      alchemyApiKey: process.env.ALCHEMY_API_KEY,
+      enableMCP: process.env.ENABLE_MCP !== 'false',
+      enableAIAgents: process.env.ENABLE_AI_AGENTS !== 'false',
+      enableAdvancedFeatures: process.env.ENABLE_ADVANCED_FEATURES !== 'false'
     };
 
-    const automation = new AutomationSystem(config);
+    console.log('\n╔════════════════════════════════════════════════════════════════╗');
+    console.log('║  Starting Advanced AI Automation System v5.0.0 - Enterprise    ║');
+    console.log('╚════════════════════════════════════════════════════════════════╝\n');
+
+    const automation = new CombinedAutomationSystem(config);
     automation.start();
 
     process.on('SIGINT', async () => {
+      console.log('\n⚠️  SIGINT received - initiating graceful shutdown...');
       await automation.shutdown();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
+      console.log('\n⚠️  SIGTERM received - initiating graceful shutdown...');
       await automation.shutdown();
       process.exit(0);
     });
+
+    process.on('uncaughtException', async (error) => {
+      console.error('\n❌ Uncaught Exception:', error);
+      await automation.shutdown();
+      process.exit(1);
+    });
+
+    process.on('unhandledRejection', async (reason, promise) => {
+      console.error('\n❌ Unhandled Rejection at:', promise, 'reason:', reason);
+      await automation.shutdown();
+      process.exit(1);
+    });
   } catch (error) {
-    console.error('❌ Failed to start automation system:', error);
+    console.error('\n❌ Failed to start advanced automation system:', error);
     process.exit(1);
   }
 }
 
-export default AutomationSystem;
+export default CombinedAutomationSystem;

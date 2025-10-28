@@ -30,16 +30,22 @@
   "packageManager": "pnpm@10.11.0",
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "@langchain/core": "^0.3.79",
+    "@langchain/google-genai": "^1.0.0",
+    "@langchain/openai": "^1.0.0",
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "ethers": "^6.14.2",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
+    "langchain": "^1.0.1",
     "node-fetch": "^2.7.0",
     "rollup": "^4.52.5",
     "viem": "^2.21.45",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.52.5",

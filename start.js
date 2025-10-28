@@ -6,10 +6,10 @@ const __dirname = dirname(__filename);
 
 import('./Backend/automation-system.js').then(async (module) => {
   const AutomationSystem = module.default;
-  
+
   console.log('🚀 Starting Celo AI Automation Engine...');
   console.log('📍 Root directory:', __dirname);
-  
+
   const config = {
     port: process.env.PORT || 3001,
     geminiApiKey: process.env.GEMINI_API_KEY || 'AIzaSyCKFLkomLb78CSBz4FA36VS9Vb789fZ8qc',

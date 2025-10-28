@@ -40,6 +40,7 @@
     "@radix-ui/react-toggle-group": "1.1.11",
     "@radix-ui/react-tooltip": "1.2.8",
     "@rainbow-me/rainbowkit": "^2.2.9",
+    "@supabase/supabase-js": "^2.76.1",
     "@vercel/analytics": "latest",
     "autoprefixer": "^10.4.21",
     "axios": "^1.12.2",

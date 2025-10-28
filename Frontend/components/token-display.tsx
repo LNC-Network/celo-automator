@@ -1,6 +1,4 @@
-/**
- * Token Display Component - Shows user's token portfolio
- */
+
 
 "use client"
 

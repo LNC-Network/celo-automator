@@ -1,7 +1,4 @@
-/**
- * Gas Estimation Service
- * Integrates Alchemy and Etherscan APIs for accurate gas estimation
- */
+
 
 import fetch from 'node-fetch';
 import https from 'https';
@@ -12,45 +9,40 @@ export class GasEstimationService {
     this.etherscanApiKey = config.etherscanApiKey || process.env.ETHERSCAN_API_KEY;
     this.network = config.network || 'alfajores';
     this.rpcUrl = config.rpcUrl || process.env.RPC_URL;
-    
-    // API endpoints
+
     this.alchemyUrl = this.getAlchemyUrl();
     this.etherscanUrl = this.getEtherscanUrl();
   }
 
   getAlchemyUrl() {
     const networkMap = {
-      'mainnet': 'https://eth-mainnet.g.alchemy.com/v2/',
-      'alfajores': 'https://celo-alfajores.g.alchemy.com/v2/',
-      'celo': 'https://celo-mainnet.g.alchemy.com/v2/'
+      'mainnet': 'https:
+      'alfajores': 'https:
+      'celo': 'https:
     };
     return networkMap[this.network] || networkMap['alfajores'];
   }
 
   getEtherscanUrl() {
     const networkMap = {
-      'mainnet': 'https://api.etherscan.io/api',
-      'alfajores': 'https://alfajores-blockscout.celo-testnet.org/api',
-      'celo': 'https://explorer.celo.org/api'
+      'mainnet': 'https:
+      'alfajores': 'https:
+      'celo': 'https:
     };
     return networkMap[this.network] || networkMap['alfajores'];
   }
 
-  /**
-   * Estimate gas using Alchemy
-   */
   async estimateGasAlchemy(to, value = '0', data = '0x') {
     try {
-      // Skip if no API key
+
       if (!this.alchemyApiKey || this.alchemyApiKey === 'demo') {
         return null;
       }
 
-      // Ensure value is a valid integer string for BigInt conversion
       let hexValue = '0x0';
       if (value && value !== '0') {
         try {
-          // Convert decimal string to integer if needed
+
           const numValue = parseInt(value, 10);
           hexValue = `0x${BigInt(numValue).toString(16)}`;
         } catch (err) {
@@ -84,12 +76,9 @@ export class GasEstimationService {
     }
   }
 
-  /**
-   * Get gas price from Alchemy
-   */
   async getGasPriceAlchemy() {
     try {
-      // Skip if no API key
+
       if (!this.alchemyApiKey || this.alchemyApiKey === 'demo') {
         return null;
       }
@@ -122,12 +111,9 @@ export class GasEstimationService {
     }
   }
 
-  /**
-   * Get gas tracker from Etherscan
-   */
   async getGasTrackerEtherscan() {
     try {
-      // Skip if no API key
+
       if (!this.etherscanApiKey || this.etherscanApiKey === 'demo') {
         return null;
       }
@@ -157,9 +143,6 @@ export class GasEstimationService {
     }
   }
 
-  /**
-   * Estimate transaction cost
-   */
   async estimateTransactionCost(to, value = '0', data = '0x') {
     try {
       const gasEstimate = await this.estimateGasAlchemy(to, value, data);
@@ -199,11 +182,8 @@ export class GasEstimationService {
     }
   }
 
-  /**
-   * Get default estimate (fallback)
-   */
   getDefaultEstimate() {
-    const baseGasPrice = 0.5; // gwei
+    const baseGasPrice = 0.5;
     const gasLimit = 21000;
     const estimatedCostWei = gasLimit * baseGasPrice * 1e9;
     const estimatedCostEth = estimatedCostWei / 1e18;
@@ -231,9 +211,6 @@ export class GasEstimationService {
     };
   }
 
-  /**
-   * Get comprehensive gas data
-   */
   async getComprehensiveGasData(to, value = '0', data = '0x') {
     const [transactionCost, gasTracker] = await Promise.all([
       this.estimateTransactionCost(to, value, data),

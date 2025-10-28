@@ -58,15 +58,15 @@ export default function Hero() {
   return (
     <section className="relative w-full min-h-screen flex items-center justify-center overflow-hidden bg-linear-to-b from-background via-background to-muted/20">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Animated Arc Background */}
+        {}
         <motion.svg
           className="absolute bottom-0 left-0 w-full h-2/3"
           viewBox="0 0 1440 800"
           fill="none"
-          xmlns="http://www.w3.org/2000/svg"
+          xmlns="http:
           preserveAspectRatio="none"
         >
-          {/* Main Arc */}
+          {}
           <motion.path
             d="M 0 400 Q 360 50 720 50 T 1440 400"
             stroke="url(#arcGradient)"
@@ -76,8 +76,8 @@ export default function Hero() {
             transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
             strokeDasharray="20,10"
           />
-          
-          {/* Glow Arc */}
+
+          {}
           <motion.path
             d="M 0 400 Q 360 50 720 50 T 1440 400"
             stroke="url(#arcGlowGradient)"
@@ -103,7 +103,7 @@ export default function Hero() {
           </defs>
         </motion.svg>
 
-        {/* Floating orbs */}
+        {}
         <motion.div
           className="absolute top-20 right-10 w-64 h-64 bg-primary/10 rounded-full blur-3xl"
           animate={{ y: [0, -30, 0], x: [0, 20, 0] }}
@@ -122,7 +122,7 @@ export default function Hero() {
         initial="hidden"
         animate="visible"
       >
-        {/* Badge */}
+        {}
         <motion.div
           variants={itemVariants}
           className="flex justify-center mb-8"
@@ -137,7 +137,7 @@ export default function Hero() {
           </div>
         </motion.div>
 
-        {/* Heading */}
+        {}
         <motion.h1
           variants={itemVariants}
           className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight tracking-tight text-center"
@@ -145,7 +145,7 @@ export default function Hero() {
           Automate Payments, NFTs, Swaps & DAO Tasks
         </motion.h1>
 
-        {/* Subheading */}
+        {}
         <motion.p
           variants={itemVariants}
           className="text-lg sm:text-xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed text-center hover:text-white transition-smooth"
@@ -153,7 +153,7 @@ export default function Hero() {
           Transparent, low-cost, mobile-first blockchain automation for everyone. Build powerful workflows without code.
         </motion.p>
 
-        {/* CTA Buttons */}
+        {}
         <motion.div
           variants={itemVariants}
           className="flex flex-col sm:flex-row gap-4 justify-center mb-16"
@@ -183,7 +183,7 @@ export default function Hero() {
           </motion.div>
         </motion.div>
 
-        {/* Stats */}
+        {}
         <motion.div
           variants={itemVariants}
           className="grid grid-cols-3 gap-4 sm:gap-8 max-w-2xl mx-auto"

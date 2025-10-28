@@ -1,7 +1,4 @@
-/**
- * useWallet Hook - Manages wallet connection and state
- * Handles connecting, switching networks, and watching for changes
- */
+
 
 "use client"
 
@@ -31,7 +28,6 @@ export function useWallet() {
     setError: setStoreError,
   } = useStore()
 
-  // Refresh balance and tokens
   const refreshBalanceAndTokens = useCallback(async () => {
     if (!wallet.isConnected || !wallet.address) return
 
@@ -40,7 +36,6 @@ export function useWallet() {
       const provider = await connectWalletService()
       connectWallet(provider.address, provider.balance)
 
-      // Fetch tokens for the new network
       const tokens = await getCeloCommonTokens(provider.address)
       updateWalletTokens(
         tokens.map((t) => ({
@@ -58,20 +53,16 @@ export function useWallet() {
     }
   }, [wallet.isConnected, wallet.address, connectWallet, updateWalletTokens, setLoading])
 
-  // Connect wallet
   const handleConnect = useCallback(async () => {
     setIsConnecting(true)
     setError(null)
     try {
       const provider = await connectWalletService()
-      
-      // Connect to blockchain integration
+
       await blockchainIntegration.switchNetwork(wallet.network)
-      
-      // Use the store's connectWallet which now integrates with API
+
       await connectWallet(provider.address, provider.balance)
 
-      // Fetch tokens using blockchain integration
       setLoading(true)
       const tokens = await blockchainIntegration.getWalletTokens(provider.address)
       updateWalletTokens(
@@ -93,20 +84,18 @@ export function useWallet() {
     }
   }, [connectWallet, updateWalletTokens, setLoading, setStoreError, wallet.network])
 
-  // Disconnect wallet
   const handleDisconnect = useCallback(() => {
     disconnectWalletService()
     disconnectWallet()
     setError(null)
   }, [disconnectWallet])
 
-  // Switch to mainnet
   const handleSwitchToMainnet = useCallback(async () => {
     setError(null)
     try {
       await switchToCeloMainnet()
       switchNetwork("mainnet")
-      // Give the network a moment to switch, then refresh balance
+
       setTimeout(() => {
         refreshBalanceAndTokens()
       }, 1000)
@@ -117,13 +106,12 @@ export function useWallet() {
     }
   }, [switchNetwork, setStoreError, refreshBalanceAndTokens])
 
-  // Switch to testnet
   const handleSwitchToTestnet = useCallback(async () => {
     setError(null)
     try {
       await switchToCeloTestnet()
       switchNetwork("testnet")
-      // Give the network a moment to switch, then refresh balance
+
       setTimeout(() => {
         refreshBalanceAndTokens()
       }, 1000)
@@ -134,7 +122,6 @@ export function useWallet() {
     }
   }, [switchNetwork, setStoreError, refreshBalanceAndTokens])
 
-  // Watch for wallet changes
   useEffect(() => {
     if (!wallet.isConnected) return
 
@@ -142,14 +129,14 @@ export function useWallet() {
       if (accounts.length === 0) {
         handleDisconnect()
       } else if (accounts[0] !== wallet.address) {
-        // Account changed, reconnect
+
         handleConnect()
       }
     })
 
     const unsubscribeChain = watchChainChanges((chainId) => {
       console.log("[useWallet] Chain changed:", chainId)
-      // Refresh balance and tokens when chain changes
+
       refreshBalanceAndTokens()
     })
 
@@ -159,7 +146,6 @@ export function useWallet() {
     }
   }, [wallet.isConnected, wallet.address, handleConnect, handleDisconnect, refreshBalanceAndTokens])
 
-  // Auto-connect if previously connected
   useEffect(() => {
     const savedAddress = localStorage.getItem("walletAddress")
     if (savedAddress && !wallet.isConnected) {

@@ -1,7 +1,4 @@
-/**
- * Etherscan Integration Service
- * Provides comprehensive blockchain data from Etherscan/Blockscout APIs
- */
+
 
 import fetch from 'node-fetch';
 
@@ -14,16 +11,13 @@ export class EtherscanService {
 
   getBaseUrl() {
     const networkMap = {
-      'mainnet': 'https://api.etherscan.io/api',
-      'alfajores': 'https://alfajores-blockscout.celo-testnet.org/api',
-      'celo': 'https://explorer.celo.org/api'
+      'mainnet': 'https:
+      'alfajores': 'https:
+      'celo': 'https:
     };
     return networkMap[this.network] || networkMap['alfajores'];
   }
 
-  /**
-   * Get account balance
-   */
   async getBalance(address) {
     try {
       const response = await fetch(
@@ -40,9 +34,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get account transactions
-   */
   async getTransactions(address, startBlock = 0, endBlock = 99999999, sort = 'desc') {
     try {
       const response = await fetch(
@@ -59,9 +50,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get internal transactions
-   */
   async getInternalTransactions(address) {
     try {
       const response = await fetch(
@@ -78,9 +66,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get token transfers
-   */
   async getTokenTransfers(address, contractAddress = null) {
     try {
       let url = `${this.baseUrl}?module=account&action=tokentx&address=${address}`;
@@ -101,9 +86,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get transaction receipt status
-   */
   async getTransactionStatus(txHash) {
     try {
       const response = await fetch(
@@ -123,9 +105,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get contract ABI
-   */
   async getContractABI(contractAddress) {
     try {
       const response = await fetch(
@@ -142,9 +121,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get contract source code
-   */
   async getContractSourceCode(contractAddress) {
     try {
       const response = await fetch(
@@ -161,9 +137,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get gas tracker
-   */
   async getGasTracker() {
     try {
       const response = await fetch(
@@ -180,9 +153,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get block information
-   */
   async getBlockInfo(blockNumber) {
     try {
       const response = await fetch(
@@ -199,9 +169,6 @@ export class EtherscanService {
     }
   }
 
-  /**
-   * Get account analytics
-   */
   async getAccountAnalytics(address) {
     try {
       const [balance, transactions, internalTxs, tokenTransfers] = await Promise.all([

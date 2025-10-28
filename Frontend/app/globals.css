@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Web3 color palette: teal/cyan for primary (trust, finance), deep navy for backgrounds, emerald for success, amber for alerts */
+
   --background: oklch(0.98 0 0);
   --foreground: oklch(0.15 0 0);
   --card: oklch(1 0 0);
@@ -133,7 +133,6 @@
   }
 }
 
-/* Enhanced animations for professional Web3 UI */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -251,7 +250,6 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Glassmorphism effect */
 .glass {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
@@ -264,7 +262,6 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Smooth transitions */
 .transition-smooth {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -273,7 +270,6 @@
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Hover lift effect */
 .hover-lift {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -283,7 +279,6 @@
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
-/* Gradient text */
 .gradient-text {
   background: linear-gradient(135deg, var(--primary), var(--accent));
   -webkit-background-clip: text;

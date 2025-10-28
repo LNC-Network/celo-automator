@@ -1,12 +1,8 @@
-/**
- * Token Service - Fetches and manages token data
- * Includes ERC20 token balances, prices, and metadata
- */
+
 
 import { ethers } from "ethers"
 import { getProvider } from "./wallet-service"
 
-// ERC20 ABI (minimal)
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
@@ -25,17 +21,13 @@ export interface Token {
   value?: number
 }
 
-// Common Celo tokens (Alfajores testnet) - using correct addresses
 export const COMMON_TOKENS = {
-  CELO: "0xF194afDf50B03e69Bd7D057c1Aa9e10c9954E4C9", // CELO token on Alfajores
-  cUSD: "0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1", // cUSD on Alfajores
-  cEUR: "0x10c892A6EC43a53E45D0B916B4b7D383B1b78C0F", // cEUR on Alfajores
-  cREAL: "0x00Be915B9dCf56a3CBE739D9B9c202ca692409EC", // cREAL on Alfajores
+  CELO: "0xF194afDf50B03e69Bd7D057c1Aa9e10c9954E4C9",
+  cUSD: "0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1",
+  cEUR: "0x10c892A6EC43a53E45D0B916B4b7D383B1b78C0F",
+  cREAL: "0x00Be915B9dCf56a3CBE739D9B9c202ca692409EC",
 }
 
-/**
- * Fetch token balance for an address
- */
 export async function getTokenBalance(
   tokenAddress: string,
   walletAddress: string
@@ -44,7 +36,6 @@ export async function getTokenBalance(
     const provider = getProvider()
     if (!provider) throw new Error("Provider not available")
 
-    // Validate addresses
     if (!ethers.isAddress(tokenAddress)) {
       console.warn(`[Token Service] Invalid token address: ${tokenAddress}`)
       return "0"
@@ -54,7 +45,6 @@ export async function getTokenBalance(
       return "0"
     }
 
-    // Check if the address is a contract
     const code = await provider.getCode(tokenAddress)
     if (code === "0x") {
       console.warn(`[Token Service] No contract found at address: ${tokenAddress}`)
@@ -70,11 +60,11 @@ export async function getTokenBalance(
     const [balance, decimals] = await Promise.all([
       contract.balanceOf(walletAddress).catch((err: any) => {
         console.warn(`[Token Service] balanceOf failed for ${tokenAddress}:`, err.message)
-        return ethers.parseUnits("0", 18) // Return 0 balance if balanceOf fails
+        return ethers.parseUnits("0", 18)
       }),
       contract.decimals().catch((err: any) => {
         console.warn(`[Token Service] decimals failed for ${tokenAddress}:`, err.message)
-        return 18 // Default to 18 decimals if decimals() fails
+        return 18
       }),
     ])
 
@@ -85,9 +75,6 @@ export async function getTokenBalance(
   }
 }
 
-/**
- * Fetch token metadata
- */
 export async function getTokenMetadata(
   tokenAddress: string
 ): Promise<Omit<Token, "balance" | "price" | "value">> {
@@ -95,12 +82,10 @@ export async function getTokenMetadata(
     const provider = getProvider()
     if (!provider) throw new Error("Provider not available")
 
-    // Validate address
     if (!ethers.isAddress(tokenAddress)) {
       throw new Error(`Invalid token address: ${tokenAddress}`)
     }
 
-    // Check if the address is a contract
     const code = await provider.getCode(tokenAddress)
     if (code === "0x") {
       throw new Error(`No contract found at address: ${tokenAddress}`)
@@ -139,13 +124,10 @@ export async function getTokenMetadata(
   }
 }
 
-/**
- * Fetch token prices from CoinGecko
- */
 export async function getTokenPrice(tokenSymbol: string): Promise<number | null> {
   try {
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${tokenSymbol.toLowerCase()}&vs_currencies=usd`
+      `https:
     )
     const data = await response.json()
     return data[tokenSymbol.toLowerCase()]?.usd || null
@@ -155,9 +137,6 @@ export async function getTokenPrice(tokenSymbol: string): Promise<number | null>
   }
 }
 
-/**
- * Fetch multiple token balances for a wallet
- */
 export async function getMultipleTokenBalances(
   tokenAddresses: string[],
   walletAddress: string
@@ -166,7 +145,6 @@ export async function getMultipleTokenBalances(
     const provider = getProvider()
     if (!provider) throw new Error("Provider not available")
 
-    // Filter out invalid addresses
     const validAddresses = tokenAddresses.filter(addr => ethers.isAddress(addr))
     if (validAddresses.length === 0) {
       console.warn("[Token Service] No valid token addresses provided")
@@ -181,7 +159,7 @@ export async function getMultipleTokenBalances(
         return "0"
       }
     })
-    
+
     const metadataPromises = validAddresses.map(async (tokenAddress) => {
       try {
         return await getTokenMetadata(tokenAddress)
@@ -224,9 +202,6 @@ export async function getMultipleTokenBalances(
   }
 }
 
-/**
- * Fetch CELO native token balance
- */
 export async function getCeloBalance(walletAddress: string): Promise<string> {
   try {
     const provider = getProvider()
@@ -240,9 +215,6 @@ export async function getCeloBalance(walletAddress: string): Promise<string> {
   }
 }
 
-/**
- * Get all Celo common tokens with balances
- */
 export async function getCeloCommonTokens(
   walletAddress: string
 ): Promise<Token[]> {
@@ -250,7 +222,6 @@ export async function getCeloCommonTokens(
     const tokenAddresses = Object.values(COMMON_TOKENS)
     const tokens = await getMultipleTokenBalances(tokenAddresses, walletAddress)
 
-    // Add native CELO token
     const celoBalance = await getCeloBalance(walletAddress)
     const celoPrice = await getTokenPrice("celo")
 
@@ -271,9 +242,6 @@ export async function getCeloCommonTokens(
   }
 }
 
-/**
- * Get token info for a single token
- */
 export async function getTokenInfo(
   tokenAddress: string,
   walletAddress: string
@@ -299,9 +267,6 @@ export async function getTokenInfo(
   }
 }
 
-/**
- * Send token transfer
- */
 export async function transferToken(
   tokenAddress: string,
   toAddress: string,
@@ -313,7 +278,6 @@ export async function transferToken(
 
     const signer = await provider.getSigner()
 
-    // For CELO native token
     if (tokenAddress === "0x0000000000000000000000000000000000000000") {
       const tx = await signer.sendTransaction({
         to: toAddress,
@@ -322,7 +286,6 @@ export async function transferToken(
       return tx.hash
     }
 
-    // For ERC20 tokens
     const contract = new ethers.Contract(
       tokenAddress,
       [

@@ -5,35 +5,37 @@ import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
+import { AuthProvider } from "@/components/auth/auth-provider";
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "AutoFi - Web3 Automation Platform",
-  description: "Automate payments, NFTs, swaps & DAO tasks on Celo blockchain",
-  generator: "v0.app",
-}
+  title: "Celo AI Automation Engine",
+  description: "Advanced AI-powered blockchain automation system",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased dark`} suppressHydrationWarning>
+      <body className={`${_geist.className} ${_geistMono.className}`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster richColors closeButton/>
+          <AuthProvider>
+            {children}
+            <Toaster richColors closeButton/>
+          </AuthProvider>
         </ThemeProvider>
         <Analytics />
       </body>
     </html>
-  )
+  );
 }

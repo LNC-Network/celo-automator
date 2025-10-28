@@ -1,6 +1,4 @@
-/**
- * Transaction Service - Handles blockchain transactions and history
- */
+
 
 import { ethers } from "ethers"
 import { getProvider, getSigner } from "./wallet-service"
@@ -22,9 +20,6 @@ export interface TransactionParams {
   data?: string
 }
 
-/**
- * Send a transaction
- */
 export async function sendTransaction(
   params: TransactionParams
 ): Promise<string> {
@@ -43,9 +38,6 @@ export async function sendTransaction(
   }
 }
 
-/**
- * Wait for transaction confirmation
- */
 export async function waitForTransaction(
   txHash: string,
   confirmations: number = 1
@@ -70,9 +62,6 @@ export async function waitForTransaction(
   }
 }
 
-/**
- * Get transaction status
- */
 export async function getTransactionStatus(txHash: string): Promise<Transaction | null> {
   try {
     const provider = getProvider()
@@ -101,9 +90,6 @@ export async function getTransactionStatus(txHash: string): Promise<Transaction 
   }
 }
 
-/**
- * Get transaction history for an address
- */
 export async function getTransactionHistory(
   address: string,
   limit: number = 10
@@ -114,12 +100,11 @@ export async function getTransactionHistory(
 
     const blockNumber = await provider.getBlockNumber()
     const filter = {
-      fromBlock: Math.max(0, blockNumber - 10000), // Last ~10000 blocks
+      fromBlock: Math.max(0, blockNumber - 10000),
       toBlock: blockNumber,
       address: address,
     }
 
-    // Note: This is a simplified approach. For production, use Celo Indexer or Celoscan API
     const logs = await provider.getLogs(filter)
 
     const transactions: Transaction[] = logs
@@ -141,15 +126,12 @@ export async function getTransactionHistory(
   }
 }
 
-/**
- * Get real transaction history from Celoscan API
- */
 export async function getTransactionHistoryFromAPI(
   address: string,
   limit: number = 10
 ): Promise<Transaction[]> {
   try {
-    const explorerUrl = "https://celoscan.io/api"
+    const explorerUrl = "https:
     const params = new URLSearchParams({
       module: "account",
       action: "txlist",
@@ -159,7 +141,7 @@ export async function getTransactionHistoryFromAPI(
       sort: "desc",
       page: "1",
       offset: limit.toString(),
-      apikey: "YourApiKeyToken", // Add your Celoscan API key
+      apikey: "YourApiKeyToken",
     })
 
     const response = await fetch(`${explorerUrl}?${params.toString()}`)
@@ -186,9 +168,6 @@ export async function getTransactionHistoryFromAPI(
   }
 }
 
-/**
- * Estimate gas for a transaction
- */
 export async function estimateGas(
   params: TransactionParams
 ): Promise<string> {
@@ -209,9 +188,6 @@ export async function estimateGas(
   }
 }
 
-/**
- * Get current gas price
- */
 export async function getGasPrice(): Promise<{
   standard: string
   fast: string
@@ -239,9 +215,6 @@ export async function getGasPrice(): Promise<{
   }
 }
 
-/**
- * Sign a message
- */
 export async function signMessage(message: string): Promise<string> {
   try {
     const signer = await getSigner()

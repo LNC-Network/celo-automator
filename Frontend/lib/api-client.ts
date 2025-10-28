@@ -1,7 +1,4 @@
-/**
- * API Client for connecting Frontend to Backend
- * Handles all communication with the automation system backend
- */
+
 
 export interface ApiResponse<T = any> {
   success: boolean
@@ -71,7 +68,7 @@ class ApiClient {
   private wsConnection: WebSocket | null = null
   private eventListeners: Map<string, (data: any) => void> = new Map()
 
-  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', apiKey?: string) {
+  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http:
     this.baseUrl = baseUrl
     this.apiKey = apiKey
   }
@@ -117,7 +114,6 @@ class ApiClient {
     }
   }
 
-  // Automation Management
   async createAutomation(automation: AutomationRequest): Promise<ApiResponse<AutomationResponse>> {
     return this.request<AutomationResponse>('/api/automations', {
       method: 'POST',
@@ -165,7 +161,6 @@ class ApiClient {
     })
   }
 
-  // Wallet Management
   async getWalletInfo(address: string): Promise<ApiResponse<WalletInfo>> {
     return this.request<WalletInfo>(`/api/wallet/${address}`)
   }
@@ -178,7 +173,6 @@ class ApiClient {
     return this.request<any[]>(`/api/wallet/${address}/tokens`)
   }
 
-  // Blockchain Operations
   async sendTransaction(tx: TransactionRequest): Promise<ApiResponse<{ txHash: string }>> {
     return this.request<{ txHash: string }>('/api/blockchain/send-transaction', {
       method: 'POST',
@@ -201,7 +195,6 @@ class ApiClient {
     return this.request<any[]>(`/api/blockchain/transactions/${address}?limit=${limit}`)
   }
 
-  // Natural Language Processing
   async processNaturalLanguage(prompt: string, context?: Record<string, any>): Promise<ApiResponse<{
     functionCalls: Array<{
       functionName: string
@@ -221,7 +214,6 @@ class ApiClient {
     })
   }
 
-  // Analytics
   async getAnalytics(sessionId?: string): Promise<ApiResponse<{
     totalAutomations: number
     activeAutomations: number
@@ -240,7 +232,6 @@ class ApiClient {
     }>(`/api/analytics${sessionId ? `?sessionId=${sessionId}` : ''}`)
   }
 
-  // System Status
   async getSystemStatus(): Promise<ApiResponse<{
     status: string
     version: string
@@ -259,37 +250,31 @@ class ApiClient {
     }>('/api/status')
   }
 
-  // Available Functions
   async getAvailableFunctions(): Promise<ApiResponse<string[]>> {
     return this.request<string[]>('/api/functions')
   }
 
-  // WebSocket connection for real-time updates
   connectWebSocket(onMessage: (data: any) => void): WebSocket {
     try {
-      // Check if already connected
+
       if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
         console.log('[WebSocket] Already connected, returning existing connection')
         return this.wsConnection
       }
 
-      // Close existing connection if any
       if (this.wsConnection) {
         console.log('[WebSocket] Closing existing connection')
         this.wsConnection.close()
       }
 
-      // Construct WebSocket URL properly
       let wsUrl = this.baseUrl
 
-      // Replace http/https with ws/wss
-      if (wsUrl.startsWith('https://')) {
-        wsUrl = wsUrl.replace('https://', 'wss://')
-      } else if (wsUrl.startsWith('http://')) {
-        wsUrl = wsUrl.replace('http://', 'ws://')
+      if (wsUrl.startsWith('https:
+        wsUrl = wsUrl.replace('https:
+      } else if (wsUrl.startsWith('http:
+        wsUrl = wsUrl.replace('http:
       }
 
-      // Ensure no trailing slash
       wsUrl = wsUrl.replace(/\/$/, '')
 
       const fullWsUrl = `${wsUrl}/ws`
@@ -297,7 +282,6 @@ class ApiClient {
 
       const ws = new WebSocket(fullWsUrl)
 
-      // Add connection timeout
       const connectionTimeout = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
           console.warn('[WebSocket] Connection timeout after 10 seconds')
@@ -308,7 +292,7 @@ class ApiClient {
       ws.onopen = () => {
         clearTimeout(connectionTimeout)
         console.log('[WebSocket] Connected successfully')
-        // Send initial message to confirm connection
+
         ws.send(JSON.stringify({ type: 'ping', timestamp: new Date().toISOString() }))
       }
 
@@ -323,7 +307,7 @@ class ApiClient {
 
       ws.onerror = (error) => {
         console.error('[WebSocket] Connection error:', error)
-        // Provide more helpful error information
+
         if (!ws.readyState || ws.readyState === WebSocket.CONNECTING) {
           console.warn('[WebSocket] Connection failed - backend may not be running or CORS issue')
         }
@@ -331,7 +315,7 @@ class ApiClient {
 
       ws.onclose = (event) => {
         console.log('[WebSocket] Connection closed', event.code, event.reason)
-        // Clean up connection reference
+
         if (this.wsConnection === ws) {
           this.wsConnection = null
         }
@@ -345,7 +329,6 @@ class ApiClient {
     }
   }
 
-  // Enhanced WebSocket methods
   addEventListener(eventType: string, callback: (data: any) => void): void {
     this.eventListeners.set(eventType, callback)
   }
@@ -361,27 +344,22 @@ class ApiClient {
     }
   }
 
-  // Real-time automation updates
   subscribeToAutomationUpdates(automationId: string, callback: (update: any) => void): void {
     this.addEventListener(`automation:${automationId}`, callback)
   }
 
-  // Real-time transaction updates
   subscribeToTransactionUpdates(txHash: string, callback: (update: any) => void): void {
     this.addEventListener(`transaction:${txHash}`, callback)
   }
 
-  // Real-time price updates
   subscribeToPriceUpdates(tokenSymbol: string, callback: (price: number) => void): void {
     this.addEventListener(`price:${tokenSymbol}`, callback)
   }
 
-  // Real-time balance updates
   subscribeToBalanceUpdates(address: string, callback: (balance: string) => void): void {
     this.addEventListener(`balance:${address}`, callback)
   }
 
-  // Disconnect WebSocket
   disconnectWebSocket(): void {
     if (this.wsConnection) {
       this.wsConnection.close()
@@ -389,7 +367,6 @@ class ApiClient {
     }
   }
 
-  // Enhanced automation methods
   async createAutomationWithAI(prompt: string, context?: Record<string, any>): Promise<ApiResponse<AutomationResponse>> {
     return this.request<AutomationResponse>('/api/automations/ai-create', {
       method: 'POST',
@@ -401,9 +378,8 @@ class ApiClient {
     })
   }
 
-  // Enhanced blockchain function calls
   async executeBlockchainFunctionWithAI(
-    prompt: string, 
+    prompt: string,
     context?: Record<string, any>
   ): Promise<ApiResponse<{
     functionCalls: Array<{
@@ -423,7 +399,6 @@ class ApiClient {
     })
   }
 
-  // Get system status with detailed information
   async getDetailedSystemStatus(): Promise<ApiResponse<{
     status: string
     version: string
@@ -439,7 +414,6 @@ class ApiClient {
     return this.request('/api/system/status')
   }
 
-  // Get automation analytics
   async getAutomationAnalytics(automationId?: string): Promise<ApiResponse<{
     totalExecutions: number
     successRate: number
@@ -460,7 +434,6 @@ class ApiClient {
     return this.request(endpoint)
   }
 
-  // Get blockchain analytics
   async getBlockchainAnalytics(): Promise<ApiResponse<{
     totalTransactions: number
     successfulTransactions: number

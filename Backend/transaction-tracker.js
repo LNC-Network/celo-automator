@@ -1,21 +1,14 @@
-/**
- * Real-time Transaction Tracker
- * Monitors and broadcasts transaction status updates to connected clients
- */
 
 export class TransactionTracker {
   constructor(broadcastFn) {
     this.broadcastFn = broadcastFn;
-    this.transactions = new Map(); // Track all transactions
-    this.transactionSubscribers = new Map(); // Track subscribers per tx
-    this.pollInterval = 5000; // Poll every 5 seconds
-    this.maxRetries = 60; // Max 5 minutes of polling
+    this.transactions = new Map();
+    this.transactionSubscribers = new Map();
+    this.pollInterval = 5000;
+    this.maxRetries = 60;
     this.pollingIntervals = new Map();
   }
 
-  /**
-   * Register a new transaction for tracking
-   */
   registerTransaction(txHash, metadata = {}) {
     const transaction = {
       hash: txHash,
@@ -43,19 +36,15 @@ export class TransactionTracker {
 
     this.transactions.set(txHash, transaction);
     this.broadcastTransactionUpdate(txHash, transaction);
-    
-    // Start polling for this transaction
+
     this.startPollingTransaction(txHash);
-    
+
     return transaction;
   }
 
-  /**
-   * Start polling for transaction status
-   */
   startPollingTransaction(txHash) {
     if (this.pollingIntervals.has(txHash)) {
-      return; // Already polling
+      return;
     }
 
     const pollFn = async () => {
@@ -63,15 +52,14 @@ export class TransactionTracker {
       if (!tx) return;
 
       try {
-        // Simulate transaction status check
+
         const updated = await this.checkTransactionStatus(txHash);
-        
+
         if (updated.status !== tx.status) {
           this.transactions.set(txHash, updated);
           this.broadcastTransactionUpdate(txHash, updated);
         }
 
-        // Stop polling if transaction is confirmed or failed
         if (updated.status === 'success' || updated.status === 'failed') {
           this.stopPollingTransaction(txHash);
         }
@@ -88,14 +76,10 @@ export class TransactionTracker {
 
     const interval = setInterval(pollFn, this.pollInterval);
     this.pollingIntervals.set(txHash, interval);
-    
-    // Initial check
+
     pollFn();
   }
 
-  /**
-   * Stop polling for a transaction
-   */
   stopPollingTransaction(txHash) {
     const interval = this.pollingIntervals.get(txHash);
     if (interval) {
@@ -104,27 +88,23 @@ export class TransactionTracker {
     }
   }
 
-  /**
-   * Check transaction status (simulated)
-   */
   async checkTransactionStatus(txHash) {
     const tx = this.transactions.get(txHash);
     if (!tx) return null;
 
-    // Simulate transaction progression
     const timeSinceCreation = Date.now() - tx.createdAt;
-    
+
     let status = 'pending';
     let confirmations = 0;
     let blockNumber = null;
 
     if (timeSinceCreation > 10000) {
-      // After 10 seconds, mark as success
+
       status = 'success';
       confirmations = Math.floor(timeSinceCreation / 5000);
       blockNumber = Math.floor(Math.random() * 100000) + 1000000;
     } else if (timeSinceCreation > 3000) {
-      // After 3 seconds, show as pending with confirmations
+
       confirmations = 1;
     }
 
@@ -139,9 +119,6 @@ export class TransactionTracker {
     };
   }
 
-  /**
-   * Broadcast transaction update to all subscribers
-   */
   broadcastTransactionUpdate(txHash, transaction) {
     const update = {
       type: 'transaction_update',
@@ -154,7 +131,6 @@ export class TransactionTracker {
 
     this.broadcastFn(update);
 
-    // Notify specific subscribers
     const subscribers = this.transactionSubscribers.get(txHash) || [];
     subscribers.forEach(callback => {
       try {
@@ -165,16 +141,12 @@ export class TransactionTracker {
     });
   }
 
-  /**
-   * Subscribe to transaction updates
-   */
   subscribeToTransaction(txHash, callback) {
     if (!this.transactionSubscribers.has(txHash)) {
       this.transactionSubscribers.set(txHash, []);
     }
     this.transactionSubscribers.get(txHash).push(callback);
 
-    // Return unsubscribe function
     return () => {
       const subscribers = this.transactionSubscribers.get(txHash) || [];
       const index = subscribers.indexOf(callback);
@@ -184,33 +156,21 @@ export class TransactionTracker {
     };
   }
 
-  /**
-   * Get transaction by hash
-   */
   getTransaction(txHash) {
     return this.transactions.get(txHash);
   }
 
-  /**
-   * Get all pending transactions
-   */
   getPendingTransactions() {
     return Array.from(this.transactions.values()).filter(tx => tx.status === 'pending');
   }
 
-  /**
-   * Get transaction history
-   */
   getTransactionHistory(limit = 50) {
     return Array.from(this.transactions.values())
       .sort((a, b) => b.lastUpdate - a.lastUpdate)
       .slice(0, limit);
   }
 
-  /**
-   * Clear old transactions
-   */
-  clearOldTransactions(maxAge = 3600000) { // 1 hour default
+  clearOldTransactions(maxAge = 3600000) {
     const now = Date.now();
     for (const [hash, tx] of this.transactions.entries()) {
       if (now - tx.lastUpdate > maxAge && tx.status !== 'pending') {
@@ -221,9 +181,6 @@ export class TransactionTracker {
     }
   }
 
-  /**
-   * Get transaction statistics
-   */
   getStatistics() {
     const txs = Array.from(this.transactions.values());
     const gasUsedTxs = txs.filter(tx => tx.gasUsed);
@@ -240,9 +197,6 @@ export class TransactionTracker {
     };
   }
 
-  /**
-   * Cleanup on shutdown
-   */
   shutdown() {
     for (const [hash] of this.pollingIntervals.entries()) {
       this.stopPollingTransaction(hash);

@@ -37,5 +37,9 @@
   "bugs": {
     "url": "https://github.com/celo-ai-agents/automation-engine/issues"
   },
-  "homepage": "https://github.com/celo-ai-agents/automation-engine#readme"
+  "homepage": "https://github.com/celo-ai-agents/automation-engine#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@supabase/supabase-js": "^2.76.1"
+  }
 }

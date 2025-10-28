@@ -37,14 +37,13 @@ export interface DashboardState {
 }
 
 interface Store extends DashboardState {
-  // Wallet actions
+
   connectWallet: (address: string, balance: string) => Promise<void>
   disconnectWallet: () => void
   switchNetwork: (network: "mainnet" | "testnet") => Promise<void>
   updateWalletTokens: (tokens: WalletState["tokens"]) => void
   refreshWalletInfo: (address: string) => Promise<void>
 
-  // Automation actions
   addAutomation: (automation: AutomationRequest) => Promise<void>
   updateAutomation: (id: string, updates: Partial<AutomationRequest>) => Promise<void>
   pauseAutomation: (id: string) => Promise<void>
@@ -53,23 +52,19 @@ interface Store extends DashboardState {
   executeAutomation: (id: string, context?: Record<string, any>) => Promise<void>
   loadAutomations: () => Promise<void>
 
-  // State actions
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   updateTotalProcessed: (amount: string) => void
   updatePendingAlerts: (count: number) => void
-  
-  // Analytics
+
   loadAnalytics: () => Promise<void>
-  
-  // Backend Integration
+
   executeWithAI: (prompt: string, context?: Record<string, any>) => Promise<void>
   createAutomationWithAI: (prompt: string, context?: Record<string, any>) => Promise<void>
   getSystemStatus: () => Promise<any>
   getBlockchainAnalytics: () => Promise<any>
   getAutomationAnalytics: (automationId?: string) => Promise<any>
-  
-  // Real-time updates
+
   connectWebSocket: () => void
   disconnectWebSocket: () => void
   subscribeToAutomation: (automationId: string, callback: (update: any) => void) => void
@@ -101,7 +96,7 @@ export const useStore = create<Store>()(
       connectWallet: async (address, balance) => {
         set({ loading: true, error: null })
         try {
-          // Get detailed wallet info from API
+
           const walletResponse = await apiClient.getWalletInfo(address)
           if (walletResponse.success && walletResponse.data) {
             const walletInfo = walletResponse.data
@@ -116,7 +111,7 @@ export const useStore = create<Store>()(
               loading: false,
             })
           } else {
-            // Fallback to basic info
+
             set({
               wallet: {
                 address,
@@ -129,9 +124,9 @@ export const useStore = create<Store>()(
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to connect wallet',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -150,15 +145,15 @@ export const useStore = create<Store>()(
       switchNetwork: async (network) => {
         set({ loading: true })
         try {
-          // Update network in backend if needed
+
           set((state) => ({
             wallet: { ...state.wallet, network },
             loading: false,
           }))
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to switch network',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -186,9 +181,9 @@ export const useStore = create<Store>()(
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to refresh wallet info',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -212,15 +207,15 @@ export const useStore = create<Store>()(
               loading: false,
             }))
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to create automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to create automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -246,15 +241,15 @@ export const useStore = create<Store>()(
               loading: false,
             }))
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to update automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to update automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -271,15 +266,15 @@ export const useStore = create<Store>()(
               loading: false,
             }))
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to pause automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to pause automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -296,15 +291,15 @@ export const useStore = create<Store>()(
               loading: false,
             }))
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to resume automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to resume automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -319,15 +314,15 @@ export const useStore = create<Store>()(
               loading: false,
             }))
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to delete automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to delete automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -337,18 +332,18 @@ export const useStore = create<Store>()(
         try {
           const response = await apiClient.executeAutomation(id, context)
           if (response.success) {
-            // Update automation status if needed
+
             set({ loading: false })
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to execute automation',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to execute automation',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -369,15 +364,15 @@ export const useStore = create<Store>()(
             }))
             set({ automations, loading: false })
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to load automations',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to load automations',
-            loading: false 
+            loading: false
           })
         }
       },
@@ -396,24 +391,23 @@ export const useStore = create<Store>()(
           if (response.success && response.data) {
             set({
               totalProcessed: response.data.totalTransactions.toString(),
-              pendingAlerts: 0, // Calculate from analytics
+              pendingAlerts: 0,
               loading: false,
             })
           } else {
-            set({ 
+            set({
               error: response.error || 'Failed to load analytics',
-              loading: false 
+              loading: false
             })
           }
         } catch (error) {
-          set({ 
+          set({
             error: error instanceof Error ? error.message : 'Failed to load analytics',
-            loading: false 
+            loading: false
           })
         }
       },
 
-      // Backend Integration Methods
       executeWithAI: async (prompt: string, context?: Record<string, any>) => {
         set({ loading: true })
         try {
@@ -433,8 +427,7 @@ export const useStore = create<Store>()(
         try {
           const result = await blockchainIntegration.createAutomationWithAI(prompt, context)
           console.log('AI Automation Created:', result)
-          
-          // Add to local automations list
+
           const newAutomation: Automation = {
             id: result.id,
             name: result.name,
@@ -444,7 +437,7 @@ export const useStore = create<Store>()(
             nextRun: result.nextRun,
             createdAt: new Date(result.createdAt),
           }
-          
+
           set((state) => ({
             automations: [...state.automations, newAutomation],
             loading: false
@@ -484,7 +477,6 @@ export const useStore = create<Store>()(
         }
       },
 
-      // Real-time WebSocket Methods
       connectWebSocket: () => {
         try {
           blockchainIntegration.connectToBackendWebSocket()

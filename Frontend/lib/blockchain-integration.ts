@@ -1,7 +1,4 @@
-/**
- * Blockchain Integration Service
- * Connects Frontend with Backend blockchain functionality
- */
+
 
 import { apiClient } from './api-client'
 
@@ -75,17 +72,15 @@ class BlockchainIntegration {
     this.apiClient = apiClient
   }
 
-  // Network Management
   async switchNetwork(network: 'mainnet' | 'testnet'): Promise<void> {
     this.config.network = network
-    // Update backend network configuration
+
     await apiClient.callBlockchainFunction({
       functionName: 'switchNetwork',
       parameters: { network }
     })
   }
 
-  // Wallet Operations
   async getWalletBalance(address: string): Promise<string> {
     const response = await apiClient.getWalletBalance(address)
     if (response.success && response.data) {
@@ -113,7 +108,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to get token info')
   }
 
-  // Transaction Operations
   async sendTransaction(to: string, value: string, data?: string): Promise<string> {
     const response = await apiClient.sendTransaction({
       to,
@@ -150,7 +144,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to get transaction history')
   }
 
-  // Automation Operations
   async executeAutomation(automationId: string, context?: Record<string, any>): Promise<AutomationExecution> {
     const response = await apiClient.executeAutomation(automationId, context)
     if (response.success && response.data) {
@@ -166,7 +159,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to execute automation')
   }
 
-  // DeFi Operations
   async swapTokens(
     tokenIn: string,
     tokenOut: string,
@@ -230,7 +222,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to remove liquidity')
   }
 
-  // NFT Operations
   async mintNFT(
     to: string,
     tokenURI: string,
@@ -280,7 +271,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to get NFT metadata')
   }
 
-  // DAO Operations
   async createProposal(
     title: string,
     description: string,
@@ -335,7 +325,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to execute proposal')
   }
 
-  // ReFi Operations
   async donateToCause(
     causeId: string,
     amount: string,
@@ -372,7 +361,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to create impact NFT')
   }
 
-  // Price Monitoring
   async getTokenPrice(tokenSymbol: string): Promise<number> {
     const response = await apiClient.callBlockchainFunction({
       functionName: 'getTokenPrice',
@@ -403,7 +391,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to set price alert')
   }
 
-  // Event System
   addEventListener(eventType: string, callback: (event: BlockchainEvent) => void): void {
     this.eventListeners.set(eventType, callback)
   }
@@ -419,7 +406,6 @@ class BlockchainIntegration {
     }
   }
 
-  // WebSocket Connection for Real-time Updates
   connectWebSocket(): void {
     if (this.wsConnection) {
       this.wsConnection.close()
@@ -441,7 +427,6 @@ class BlockchainIntegration {
     }
   }
 
-  // Utility Methods
   async estimateGas(transaction: {
     to: string
     value?: string
@@ -455,7 +440,7 @@ class BlockchainIntegration {
     estimatedCostGwei?: string
   }> {
     try {
-      // Try direct API endpoint first
+
       const response = await fetch(`${this.apiClient.baseUrl}/api/blockchain/estimate-gas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -477,7 +462,7 @@ class BlockchainIntegration {
       throw new Error(data.error || 'Failed to estimate gas')
     } catch (error) {
       console.error('Gas estimation error:', error)
-      // Fallback to function call
+
       const response = await this.apiClient.callBlockchainFunction({
         functionName: 'estimateGas',
         parameters: transaction
@@ -500,7 +485,6 @@ class BlockchainIntegration {
     throw new Error(response.error || 'Failed to get gas price')
   }
 
-  // Configuration
   getConfig(): BlockchainConfig {
     return { ...this.config }
   }
@@ -509,7 +493,6 @@ class BlockchainIntegration {
     this.config = { ...this.config, ...newConfig }
   }
 
-  // Enhanced methods that connect to Backend
   async executeWithAI(prompt: string, context?: Record<string, any>): Promise<{
     functionCalls: Array<{
       functionName: string
@@ -521,12 +504,12 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.executeBlockchainFunctionWithAI(prompt, context)
     if (!response.success) {
       throw new Error(response.error || 'Failed to execute with AI')
     }
-    
+
     return response.data
   }
 
@@ -542,12 +525,12 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.createAutomationWithAI(prompt, context)
     if (!response.success) {
       throw new Error(response.error || 'Failed to create automation with AI')
     }
-    
+
     return response.data
   }
 
@@ -566,12 +549,12 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.getDetailedSystemStatus()
     if (!response.success) {
       throw new Error(response.error || 'Failed to get system status')
     }
-    
+
     return response.data
   }
 
@@ -586,12 +569,12 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.getAnalytics()
     if (!response.success) {
       throw new Error(response.error || 'Failed to get analytics')
     }
-    
+
     return response.data
   }
 
@@ -614,12 +597,12 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.getAutomationAnalytics(automationId)
     if (!response.success) {
       throw new Error(response.error || 'Failed to get automation analytics')
     }
-    
+
     return response.data
   }
 
@@ -639,23 +622,22 @@ class BlockchainIntegration {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const response = await this.apiClient.getBlockchainAnalytics()
     if (!response.success) {
       throw new Error(response.error || 'Failed to get blockchain analytics')
     }
-    
+
     return response.data
   }
 
-  // Enhanced WebSocket connection with Backend
   connectToBackendWebSocket(): WebSocket {
     if (!this.apiClient) {
       throw new Error('API client not initialized')
     }
-    
+
     const ws = this.apiClient.connectWebSocket((data: any) => {
-      // Handle different types of events from Backend
+
       switch (data.type) {
         case 'automation_update':
           this.emitEvent({
@@ -687,33 +669,29 @@ class BlockchainIntegration {
           break
       }
     })
-    
+
     this.wsConnection = ws
     return ws
   }
 
-  // Subscribe to specific automation updates
   subscribeToAutomation(automationId: string, callback: (update: any) => void): void {
     if (this.apiClient) {
       this.apiClient.subscribeToAutomationUpdates(automationId, callback)
     }
   }
 
-  // Subscribe to specific transaction updates
   subscribeToTransaction(txHash: string, callback: (update: any) => void): void {
     if (this.apiClient) {
       this.apiClient.subscribeToTransactionUpdates(txHash, callback)
     }
   }
 
-  // Subscribe to price updates
   subscribeToPrice(tokenSymbol: string, callback: (price: number) => void): void {
     if (this.apiClient) {
       this.apiClient.subscribeToPriceUpdates(tokenSymbol, callback)
     }
   }
 
-  // Subscribe to balance updates
   subscribeToBalance(address: string, callback: (balance: string) => void): void {
     if (this.apiClient) {
       this.apiClient.subscribeToBalanceUpdates(address, callback)
@@ -721,11 +699,10 @@ class BlockchainIntegration {
   }
 }
 
-// Create singleton instance
 export const blockchainIntegration = new BlockchainIntegration(
   {
     network: 'testnet',
-    rpcUrl: 'https://alfajores-forno.celo-testnet.org',
+    rpcUrl: 'https:
     chainId: 44787,
     contracts: {
       agentRegistry: '0x0000000000000000000000000000000000000000',
