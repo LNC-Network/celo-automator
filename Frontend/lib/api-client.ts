@@ -68,7 +68,7 @@ class ApiClient {
   private wsConnection: WebSocket | null = null
   private eventListeners: Map<string, (data: any) => void> = new Map()
 
-  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http:
+  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', apiKey?: string) {
     this.baseUrl = baseUrl
     this.apiKey = apiKey
   }
@@ -269,10 +269,10 @@ class ApiClient {
 
       let wsUrl = this.baseUrl
 
-      if (wsUrl.startsWith('https:
-        wsUrl = wsUrl.replace('https:
-      } else if (wsUrl.startsWith('http:
-        wsUrl = wsUrl.replace('http:
+      if (wsUrl.startsWith('https://')) {
+        wsUrl = wsUrl.replace('https://', 'wss://')
+      } else if (wsUrl.startsWith('http://')) {
+        wsUrl = wsUrl.replace('http://', 'ws://')
       }
 
       wsUrl = wsUrl.replace(/\/$/, '')

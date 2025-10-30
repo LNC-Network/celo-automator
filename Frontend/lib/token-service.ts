@@ -37,17 +37,17 @@ export async function getTokenBalance(
     if (!provider) throw new Error("Provider not available")
 
     if (!ethers.isAddress(tokenAddress)) {
-      console.warn(`[Token Service] Invalid token address: ${tokenAddress}`)
+      console.warn('[Token Service] Invalid token address:', tokenAddress)
       return "0"
     }
     if (!ethers.isAddress(walletAddress)) {
-      console.warn(`[Token Service] Invalid wallet address: ${walletAddress}`)
+      console.warn('[Token Service] Invalid wallet address:', walletAddress)
       return "0"
     }
 
     const code = await provider.getCode(tokenAddress)
     if (code === "0x") {
-      console.warn(`[Token Service] No contract found at address: ${tokenAddress}`)
+      console.warn('[Token Service] No contract found at address:', tokenAddress)
       return "0"
     }
 
@@ -59,11 +59,11 @@ export async function getTokenBalance(
 
     const [balance, decimals] = await Promise.all([
       contract.balanceOf(walletAddress).catch((err: any) => {
-        console.warn(`[Token Service] balanceOf failed for ${tokenAddress}:`, err.message)
+        console.warn('[Token Service] balanceOf failed for', tokenAddress, ':', err.message)
         return ethers.parseUnits("0", 18)
       }),
       contract.decimals().catch((err: any) => {
-        console.warn(`[Token Service] decimals failed for ${tokenAddress}:`, err.message)
+        console.warn('[Token Service] decimals failed for', tokenAddress, ':', err.message)
         return 18
       }),
     ])
@@ -99,15 +99,15 @@ export async function getTokenMetadata(
 
     const [symbol, name, decimals] = await Promise.all([
       contract.symbol().catch((err: any) => {
-        console.warn(`[Token Service] symbol failed for ${tokenAddress}:`, err.message)
+        console.warn('[Token Service] symbol failed for', tokenAddress, ':', err.message)
         return "UNKNOWN"
       }),
       contract.name().catch((err: any) => {
-        console.warn(`[Token Service] name failed for ${tokenAddress}:`, err.message)
+        console.warn('[Token Service] name failed for', tokenAddress, ':', err.message)
         return "Unknown Token"
       }),
       contract.decimals().catch((err: any) => {
-        console.warn(`[Token Service] decimals failed for ${tokenAddress}:`, err.message)
+        console.warn('[Token Service] decimals failed for', tokenAddress, ':', err.message)
         return 18
       }),
     ])
@@ -127,7 +127,7 @@ export async function getTokenMetadata(
 export async function getTokenPrice(tokenSymbol: string): Promise<number | null> {
   try {
     const response = await fetch(
-      `https:
+      `https://api.coingecko.com/api/v3/simple/price?ids=${tokenSymbol.toLowerCase()}&vs_currencies=usd`
     )
     const data = await response.json()
     return data[tokenSymbol.toLowerCase()]?.usd || null
@@ -147,7 +147,7 @@ export async function getMultipleTokenBalances(
 
     const validAddresses = tokenAddresses.filter(addr => ethers.isAddress(addr))
     if (validAddresses.length === 0) {
-      console.warn("[Token Service] No valid token addresses provided")
+      console.warn('[Token Service] No valid token addresses provided')
       return []
     }
 
@@ -155,7 +155,7 @@ export async function getMultipleTokenBalances(
       try {
         return await getTokenBalance(tokenAddress, walletAddress)
       } catch (error) {
-        console.warn(`[Token Service] Failed to get balance for ${tokenAddress}:`, error)
+        console.warn('[Token Service] Failed to get balance for', tokenAddress, ':', error)
         return "0"
       }
     })
@@ -164,7 +164,7 @@ export async function getMultipleTokenBalances(
       try {
         return await getTokenMetadata(tokenAddress)
       } catch (error) {
-        console.warn(`[Token Service] Failed to get metadata for ${tokenAddress}:`, error)
+        console.warn('[Token Service] Failed to get metadata for', tokenAddress, ':', error)
         return null
       }
     })
@@ -191,7 +191,7 @@ export async function getMultipleTokenBalances(
           value,
         })
       } catch (error) {
-        console.warn(`[Token Service] Failed to process token ${metadata.symbol}:`, error)
+        console.warn('[Token Service] Failed to process token', metadata.symbol, ':', error)
       }
     }
 

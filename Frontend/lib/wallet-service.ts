@@ -75,9 +75,9 @@ export async function switchToCeloMainnet() {
           {
             chainId: "0xa4ec",
             chainName: "Celo Mainnet",
-            rpcUrls: ["https:
+            rpcUrls: ["https://forno.celo.org"],
             nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-            blockExplorerUrls: ["https:
+            blockExplorerUrls: ["https://celoscan.io"],
           },
         ],
       })
@@ -103,9 +103,9 @@ export async function switchToCeloTestnet() {
           {
             chainId: "0xaef3",
             chainName: "Celo Alfajores Testnet",
-            rpcUrls: ["https:
+            rpcUrls: ["https://forno.celo.org"],
             nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-            blockExplorerUrls: ["https:
+            blockExplorerUrls: ["https://celoscan.io"],
           },
         ],
       })

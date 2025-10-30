@@ -10,12 +10,12 @@ export class EtherscanService {
   }
 
   getBaseUrl() {
-    const networkMap = {
-      'mainnet': 'https:
-      'alfajores': 'https:
-      'celo': 'https:
+    const map = {
+      mainnet: 'https://api.celoscan.io/api',
+      celo: 'https://api.celoscan.io/api',
+      alfajores: 'https://api-alfajores.celoscan.io/api',
     };
-    return networkMap[this.network] || networkMap['alfajores'];
+    return map[this.network] || map.alfajores;
   }
 
   async getBalance(address) {

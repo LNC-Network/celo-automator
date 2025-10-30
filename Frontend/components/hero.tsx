@@ -1,10 +1,16 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight, Sparkles, Zap, Shield, Globe } from "lucide-react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import React from "react"
+import { AnimatedButton, GradientButton, NeonButton } from "@/components/ui/AnimatedButton"
+import { InteractiveCard, GlassCard, GradientCard } from "@/components/ui/InteractiveCard"
+import { RevealText, GradientText, ShimmerText, TypewriterText } from "@/components/ui/RevealText"
+import { AnimationWrapper, FadeIn, SlideUp, BounceIn } from "@/components/ui/AnimationWrapper"
+import { HoverEffects, HoverLift, HoverGlow } from "@/components/ui/HoverEffects"
+import { AnimatedLoader } from "@/components/ui/AnimatedLoader"
 
 function HeroCounter({ value, duration = 1.5 }: { value: number; duration?: number }) {
   const [displayValue, setDisplayValue] = React.useState(0)
@@ -63,7 +69,7 @@ export default function Hero() {
           className="absolute bottom-0 left-0 w-full h-2/3"
           viewBox="0 0 1440 800"
           fill="none"
-          xmlns="http:
+          xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="none"
         >
           {}
@@ -138,74 +144,95 @@ export default function Hero() {
         </motion.div>
 
         {}
-        <motion.h1
-          variants={itemVariants}
+        <RevealText
+          text="Automate Payments, NFTs, Swaps & DAO Tasks"
+          animation="slide"
+          direction="up"
           className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight tracking-tight text-center"
-        >
-          Automate Payments, NFTs, Swaps & DAO Tasks
-        </motion.h1>
+          stagger={0.1}
+        />
 
         {}
-        <motion.p
-          variants={itemVariants}
+        <RevealText
+          text="Transparent, low-cost, mobile-first blockchain automation for everyone. Build powerful workflows without code."
+          animation="fade"
           className="text-lg sm:text-xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed text-center hover:text-white transition-smooth"
-        >
-          Transparent, low-cost, mobile-first blockchain automation for everyone. Build powerful workflows without code.
-        </motion.p>
+          delay={0.5}
+          stagger={0.05}
+        />
 
         {}
-        <motion.div
-          variants={itemVariants}
+        <AnimationWrapper
+          animation="slideUp"
+          delay={1}
           className="flex flex-col sm:flex-row gap-4 justify-center mb-16"
         >
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          <HoverLift intensity="high">
             <Link href="/dashboard">
-              <Button
+              <GradientButton
                 size="lg"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground transition-smooth hover-lift group w-full sm:w-auto font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50 rounded-full px-8"
+                className="group w-full sm:w-auto font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50 rounded-full px-8"
+                icon={<ArrowRight size={20} />}
+                iconPosition="right"
               >
                 Connect Wallet
-                <ArrowRight className="ml-2 group-hover:translate-x-1 transition-smooth" size={20} />
-              </Button>
+              </GradientButton>
             </Link>
-          </motion.div>
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          </HoverLift>
+          <HoverGlow intensity="medium">
             <Link href="/tools">
-              <Button
+              <NeonButton
                 size="lg"
                 variant="outline"
-                className="w-full sm:w-auto font-semibold rounded-full transition-smooth px-8 hover:text-white"
+                className="w-full sm:w-auto font-semibold rounded-full px-8"
+                icon={<Sparkles size={18} />}
+                iconPosition="left"
               >
-                <Sparkles size={18} className="mr-2" />
                 Explore Tools
-              </Button>
+              </NeonButton>
             </Link>
-          </motion.div>
-        </motion.div>
+          </HoverGlow>
+        </AnimationWrapper>
 
         {}
-        <motion.div
-          variants={itemVariants}
+        <AnimationWrapper
+          animation="scaleIn"
+          delay={1.5}
+          staggerChildren={true}
+          stagger={0.2}
           className="grid grid-cols-3 gap-4 sm:gap-8 max-w-2xl mx-auto"
         >
           {[
-            { value: 50, label: "Automation Tools", suffix: "+" },
-            { value: 1000, label: "Active Users" },
-            { value: 10, label: "Supported Chains" },
+            { value: 50, label: "Automation Tools", suffix: "+", icon: <Zap className="w-5 h-5" /> },
+            { value: 1000, label: "Active Users", icon: <Shield className="w-5 h-5" /> },
+            { value: 10, label: "Supported Chains", icon: <Globe className="w-5 h-5" /> },
           ].map((stat, index) => (
-            <motion.div
-              key={index}
-              className="p-4 bg-card/40 glass rounded-lg border border-border/30 hover:border-primary/50 transition-smooth hover-lift text-center"
-              whileHover={{ y: -4 }}
-            >
-              <div className="text-2xl sm:text-3xl font-bold text-primary mb-1">
-                <HeroCounter value={stat.value} />
-                {stat.suffix}
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground font-medium hover:text-white transition-smooth">{stat.label}</div>
-            </motion.div>
+            <HoverLift key={index} intensity="medium">
+              <GlassCard
+                size="sm"
+                className="text-center group"
+                glow
+              >
+                <div className="flex justify-center mb-2">
+                  <motion.div
+                    className="text-primary"
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, delay: index * 0.5 }}
+                  >
+                    {stat.icon}
+                  </motion.div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-primary mb-1">
+                  <HeroCounter value={stat.value} />
+                  {stat.suffix}
+                </div>
+                <div className="text-xs sm:text-sm text-muted-foreground font-medium group-hover:text-white transition-smooth">
+                  {stat.label}
+                </div>
+              </GlassCard>
+            </HoverLift>
           ))}
-        </motion.div>
+        </AnimationWrapper>
       </motion.div>
     </section>
   )

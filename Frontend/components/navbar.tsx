@@ -35,6 +35,7 @@ export default function Navbar() {
   const navLinks = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/tools", label: "Tools" },
+    { href: "/tools/reactbits", label: "React Bits" },
     { href: "/templates", label: "Templates" },
     { href: "/analytics", label: "Analytics" },
   ]

@@ -17,6 +17,13 @@ import { EtherscanService } from './etherscan-service.js';
 import ConsolidatedAgentSystem, { LangChainAgent } from './agents/agents.js';
 import BlockchainInterface from './blockchain-interface.js';
 import SupabaseService from './lib/supabase.js';
+// New imports for enhanced features
+import { MultiChainConfig } from '../multi-chain-config.js';
+import { ProxyServer } from '../proxy-server.js';
+import { ContractFactory } from '../contract-factory.js';
+import { MonitoringSystem } from '../monitoring-system.js';
+import PostmanProtocol from '../postman-protocol.js';
+import apiRoutes from '../routes/api-routes.js';
 import 'dotenv/config';
 import EventEmitter from 'events';
 
@@ -59,7 +66,14 @@ export class CombinedAutomationSystem extends EventEmitter {
     this.failedTransactions = [];
     this.advisorySystem = new Map();
     this.predictiveAnalytics = {};
-  this._consolidatedAgentStarted = false;
+    this._consolidatedAgentStarted = false;
+
+    // Initialize new enhanced components
+    this.multiChainConfig = null;
+    this.proxyServer = null;
+    this.contractFactory = null;
+    this.monitoringSystem = null;
+    this.postmanProtocol = null;
 
     this.initializeAI();
     this.initializeDatabase();
@@ -73,6 +87,7 @@ export class CombinedAutomationSystem extends EventEmitter {
     this.initializeSupabase();
     this.initializeAgentSystems();
     this.initializeAdvancedFeatures();
+    this.initializeEnhancedFeatures();
     this.initializeExpress();
   }
 
@@ -94,6 +109,15 @@ export class CombinedAutomationSystem extends EventEmitter {
       enableGasOptimization: process.env.ENABLE_GAS_OPTIMIZATION === 'true',
       enableMCP: process.env.ENABLE_MCP !== 'false',
       enableAIAgents: process.env.ENABLE_AI_AGENTS !== 'false',
+      // Enhanced features configuration
+      enableMultiChain: process.env.ENABLE_MULTI_CHAIN !== 'false',
+      enableProxy: process.env.ENABLE_PROXY === 'true',
+      enableMonitoring: process.env.ENABLE_MONITORING !== 'false',
+      enableTesting: process.env.ENABLE_TESTING !== 'false',
+      enableContractFactory: process.env.ENABLE_CONTRACT_FACTORY !== 'false',
+      postmanApiKey: process.env.POSTMAN_API_KEY,
+      proxyPort: process.env.PROXY_PORT || 3000,
+      monitoringInterval: parseInt(process.env.MONITORING_INTERVAL) || 30000,
       ...config
     };
   }
@@ -118,9 +142,13 @@ export class CombinedAutomationSystem extends EventEmitter {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    this.db = new Database('./data/automation.db');
-    this.createTables();
-    console.log('✅ Database initialized');
+    if (this.config.enableDatabase !== false) {
+      this.db = new Database('./data/automation.db');
+      this.createTables();
+      console.log('✅ Database initialized');
+    } else {
+      console.log('⚠️ Database disabled for testing');
+    }
   }
 
   createTables() {
@@ -673,7 +701,7 @@ export class CombinedAutomationSystem extends EventEmitter {
   async processNaturalLanguage(input, context = {}) {
     try {
       const sessionId = context.sessionId || 'default';
-      const cacheKey = this.generateCacheKey(input, sessionId);
+      const cacheKey = await this.generateCacheKey(input, sessionId);
 
       const cachedResult = this.requestCache.get(cacheKey);
       if (cachedResult && !context.bypassCache) {
@@ -769,11 +797,12 @@ export class CombinedAutomationSystem extends EventEmitter {
   }
 
   generateCacheKey(input, sessionId) {
-    const hash = require('crypto')
-      .createHash('md5')
-      .update(input + sessionId)
-      .digest('hex');
-    return hash;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input + sessionId);
+    return crypto.subtle.digest('SHA-256', data).then(hash => {
+      const hashArray = Array.from(new Uint8Array(hash));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    });
   }
 
   analyzeInputComplexity(input) {
@@ -1159,6 +1188,80 @@ Guidelines:
     this.setupErrorHandlers();
   }
 
+  initializeEnhancedFeatures() {
+    console.log('🚀 Initializing Enhanced Features...');
+    
+    // Initialize Multi-Chain Configuration
+    if (this.config.enableMultiChain) {
+      try {
+        this.multiChainConfig = new MultiChainConfig();
+        console.log('✅ Multi-Chain Configuration initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize Multi-Chain Configuration:', error);
+      }
+    }
+
+    // Initialize Contract Factory
+    if (this.config.enableContractFactory && this.multiChainConfig) {
+      try {
+        this.contractFactory = new ContractFactory(this.multiChainConfig);
+        console.log('✅ Contract Factory initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize Contract Factory:', error);
+      }
+    }
+
+    // Initialize Monitoring System
+    if (this.config.enableMonitoring) {
+      try {
+        this.monitoringSystem = new MonitoringSystem({
+          enableMetrics: true,
+          enableAlerts: true,
+          enableLogging: true,
+          metricsInterval: this.config.monitoringInterval
+        });
+        console.log('✅ Monitoring System initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize Monitoring System:', error);
+      }
+    }
+
+    // Initialize Postman Protocol
+    if (this.config.enableTesting) {
+      try {
+        this.postmanProtocol = new PostmanProtocol({
+          apiKey: this.config.postmanApiKey
+        });
+        console.log('✅ Postman Protocol initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize Postman Protocol:', error);
+      }
+    }
+
+    // Initialize Proxy Server
+    if (this.config.enableProxy) {
+      try {
+        this.proxyServer = new ProxyServer({
+          port: this.config.proxyPort,
+          enableLoadBalancing: true,
+          enableHealthCheck: true,
+          enableRateLimit: true,
+          enableCORS: true,
+          enableAuth: false
+        });
+        console.log('✅ Proxy Server initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize Proxy Server:', error);
+      }
+    }
+
+    // Add enhanced API routes
+    if (this.app) {
+      this.app.use('/api', apiRoutes);
+      console.log('✅ Enhanced API routes added');
+    }
+  }
+
   setupMiddleware() {
     this.app.use(helmet());
     this.app.use(cors({
@@ -1184,7 +1287,7 @@ Guidelines:
       res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        version: '4.0.0',
+        version: '5.0.0',
         components: {
           aiEngine: 'connected',
           blockchainAPI: 'connected',
@@ -1192,7 +1295,12 @@ Guidelines:
           mcpServer: this.mcpServer ? 'connected' : 'disabled',
           aiAgents: this.aiAgentSystem ? 'connected' : 'disabled',
           orchestrator: this.agentOrchestrator ? 'connected' : 'disabled',
-          consolidatedAgents: this.consolidatedAgentSystem ? 'connected' : 'disabled'
+          consolidatedAgents: this.consolidatedAgentSystem ? 'connected' : 'disabled',
+          multiChain: this.multiChainConfig ? 'connected' : 'disabled',
+          contractFactory: this.contractFactory ? 'connected' : 'disabled',
+          monitoring: this.monitoringSystem ? 'connected' : 'disabled',
+          testing: this.postmanProtocol ? 'connected' : 'disabled',
+          proxy: this.proxyServer ? 'connected' : 'disabled'
         }
       });
     });
@@ -1817,6 +1925,11 @@ Guidelines:
       console.log('🤖 AI Agents:', this.aiAgentSystem ? 'Enabled' : 'Disabled');
   console.log('� Orchestrator:', this.agentOrchestrator ? 'Enabled' : 'Disabled');
   console.log('🤝 Consolidated Agent MCP:', this.consolidatedAgentSystem ? 'Enabled' : 'Disabled');
+      console.log('🌐 Multi-Chain Support:', this.multiChainConfig ? 'Enabled' : 'Disabled');
+      console.log('📝 Contract Factory:', this.contractFactory ? 'Enabled' : 'Disabled');
+      console.log('📊 Monitoring System:', this.monitoringSystem ? 'Enabled' : 'Disabled');
+      console.log('🧪 Testing Suite:', this.postmanProtocol ? 'Enabled' : 'Disabled');
+      console.log('⚖️  Proxy Server:', this.proxyServer ? 'Enabled' : 'Disabled');
 
       console.log('\n📋 Advanced API Endpoints:');
       console.log('  POST   /api/automate - Main automation endpoint');
@@ -1827,7 +1940,22 @@ Guidelines:
       console.log('  GET    /api/advanced/optimizations - Optimization suggestions');
       console.log('  GET    /api/analytics - Comprehensive analytics');
       console.log('  GET    /health - Health check');
-      console.log('  WS     /ws - WebSocket real-time updates\n');
+      console.log('  WS     /ws - WebSocket real-time updates');
+      console.log('\n🌐 Enhanced Multi-Chain Endpoints:');
+      console.log('  GET    /api/chains - Get supported chains');
+      console.log('  GET    /api/chains/health - Chain health status');
+      console.log('  POST   /api/chains/select - Select best chain');
+      console.log('  POST   /api/contracts/deploy - Deploy contracts');
+      console.log('  GET    /api/contracts - List deployed contracts');
+      console.log('  POST   /api/transactions/send - Send transactions');
+      console.log('  GET    /api/tokens/balance/:address - Get token balance');
+      console.log('\n📊 Monitoring & Testing Endpoints:');
+      console.log('  GET    /api/monitoring/system - System metrics');
+      console.log('  GET    /api/monitoring/alerts - System alerts');
+      console.log('  GET    /api/monitoring/logs - System logs');
+      console.log('  GET    /api/testing/collections - Test collections');
+      console.log('  POST   /api/testing/collections/:id/run - Run tests');
+      console.log('  GET    /api/loadbalancer/status - Load balancer status\n');
     });
 
     this.server = server;

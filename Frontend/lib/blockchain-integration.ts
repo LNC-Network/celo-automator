@@ -702,7 +702,7 @@ class BlockchainIntegration {
 export const blockchainIntegration = new BlockchainIntegration(
   {
     network: 'testnet',
-    rpcUrl: 'https:
+    rpcUrl: 'https://alfajores-forno.celo-testnet.org',
     chainId: 44787,
     contracts: {
       agentRegistry: '0x0000000000000000000000000000000000000000',

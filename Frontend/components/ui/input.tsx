@@ -1,21 +1,57 @@
-import * as React from 'react'
+import React from 'react';
 
-import { cn } from '@/lib/utils'
-
-function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
-  return (
-    <input
-      type={type}
-      data-slot="input"
-      className={cn(
-        'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-        className,
-      )}
-      {...props}
-    />
-  )
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+  icon?: React.ReactNode;
+  iconPosition?: 'left' | 'right';
 }
 
-export { Input }
+export const Input: React.FC<InputProps> = ({
+  label,
+  error,
+  helperText,
+  icon,
+  iconPosition = 'left',
+  className = '',
+  ...props
+}) => {
+  const baseClasses = 'block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm transition-colors duration-200';
+  const errorClasses = error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : '';
+  const iconClasses = icon ? (iconPosition === 'left' ? 'pl-10' : 'pr-10') : '';
+  
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        {icon && iconPosition === 'left' && (
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <span className="text-gray-400">{icon}</span>
+          </div>
+        )}
+        <input
+          className={`${baseClasses} ${errorClasses} ${iconClasses} ${className}`}
+          {...props}
+        />
+        {icon && iconPosition === 'right' && (
+          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+            <span className="text-gray-400">{icon}</span>
+          </div>
+        )}
+      </div>
+      {error && (
+        <p className="text-sm text-red-600">{error}</p>
+      )}
+      {helperText && !error && (
+        <p className="text-sm text-gray-500">{helperText}</p>
+      )}
+    </div>
+  );
+};
+
+export default Input;

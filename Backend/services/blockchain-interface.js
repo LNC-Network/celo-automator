@@ -66,8 +66,8 @@ export class BlockchainInterface {
 
     this.chain = this.config.network === 'mainnet' ? celo : celoAlfajores;
     this.rpcUrl = this.config.rpcUrl || (this.chain === celo
-      ? 'https:
-      : 'https:
+      ? 'https://forno.celo.org'
+      : 'https://alfajores-forno.celo-testnet.org');
 
     this.initializeClients();
   }
@@ -80,15 +80,19 @@ export class BlockchainInterface {
         transport: http(this.rpcUrl)
       });
 
-      if (this.config.privateKey) {
-        const account = privateKeyToAccount(this.config.privateKey);
-        this.walletClient = createWalletClient({
-          account,
-          chain: this.chain,
-          transport: http(this.rpcUrl)
-        });
-        this.account = account;
-        console.log(`✅ Wallet initialized for address: ${account.address}`);
+      if (this.config.privateKey && this.config.privateKey !== '0') {
+        try {
+          const account = privateKeyToAccount(this.config.privateKey);
+          this.walletClient = createWalletClient({
+            account,
+            chain: this.chain,
+            transport: http(this.rpcUrl)
+          });
+          this.account = account;
+          console.log(`✅ Wallet initialized for address: ${account.address}`);
+        } catch (error) {
+          console.warn('⚠️ Invalid private key provided, wallet operations disabled:', error.message);
+        }
       } else {
         console.warn('⚠️ No private key provided, wallet operations disabled');
       }
